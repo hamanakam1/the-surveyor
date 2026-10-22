@@ -33,6 +33,10 @@ CPU_Available_CPUs = 100
 Warning: CPU speed limit exceeded
 """
 
+NVIDIA_SMI = """NVIDIA GeForce RTX 4090, 24564, 550.54.14
+NVIDIA RTX A6000, 49140, 550.54.14
+"""
+
 
 class FakeRunner:
     """A stand-in for ``probe.run`` that answers from a table."""
@@ -111,3 +115,19 @@ def test_the_bare_metal_layer_is_exactly_one_node():
 
     assert {node.id for node in result.nodes} == {host_id()}
     assert result.edges == []
+
+
+def test_an_accelerator_is_a_fact_about_the_machine():
+    result = _run({"nvidia-smi": NVIDIA_SMI})
+    facts = result.nodes[0].facts
+    assert facts["accelerator"] == "nvidia"
+    assert facts["accelerator_count"] == 2
+    assert facts["accelerator_name"] == "NVIDIA GeForce RTX 4090"
+    assert facts["accelerator_memory_gib"] == 72
+    assert facts["accelerator_driver"] == "550.54.14"
+
+
+def test_a_machine_without_an_accelerator_says_nothing_about_one():
+    result = _run({"df": DF})
+    facts = result.nodes[0].facts
+    assert not [key for key in facts if key.startswith("accelerator")]

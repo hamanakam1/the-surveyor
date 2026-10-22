@@ -50,6 +50,7 @@ ALLOWED_PROGRAMS = frozenset(
         "lsof",
         "nerdctl",
         "networksetup",
+        "nvidia-smi",
         "pmset",
         "podman",
         "ps",

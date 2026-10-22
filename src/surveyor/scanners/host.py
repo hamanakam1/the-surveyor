@@ -198,6 +198,68 @@ def _virtualisation() -> str | None:
     return None
 
 
+#: ``nvidia-smi --query-gpu=name,memory.total,driver_version
+#: --format=csv,noheader,nounits``:
+#: "NVIDIA GeForce RTX 4090, 24564, 550.54.14"
+_GPU_LINE = re.compile(
+    r"^(?P<name>[^,]+),\s*(?P<memory>\d+)\s*,\s*(?P<driver>[^,]+)$"
+)
+
+
+def parse_nvidia_gpus(text: str) -> list[dict[str, Any]]:
+    """Parse the accelerator list an NVIDIA box reports."""
+
+    found: list[dict[str, Any]] = []
+    for raw in text.splitlines():
+        match = _GPU_LINE.match(raw.strip())
+        if not match:
+            continue
+        found.append(
+            {
+                "name": match.group("name").strip(),
+                "memory_gib": round(int(match.group("memory")) / 1024),
+                "driver": match.group("driver").strip(),
+            }
+        )
+    return found
+
+
+def _accelerators(ctx: ScanContext, log: ProbeLog) -> dict[str, Any]:
+    """The accelerators attached to this machine.
+
+    On an edge box that runs models locally, the accelerator is often the
+    most load-bearing fact there is. It is a *fact*, not telemetry: the
+    card does not become a different card.
+    """
+
+    probe = log.add(
+        run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total,driver_version",
+                "--format=csv,noheader,nounits",
+            ],
+            timeout=min(ctx.timeout, 8.0),
+        )
+    )
+    if not probe.ok:
+        return {}
+    gpus = parse_nvidia_gpus(probe.stdout)
+    if not gpus:
+        return {}
+    facts: dict[str, Any] = {
+        "accelerator": "nvidia",
+        "accelerator_count": len(gpus),
+        "accelerator_name": gpus[0]["name"],
+        "accelerator_driver": gpus[0]["driver"],
+    }
+    if len(gpus) == 1:
+        facts["accelerator_memory_gib"] = gpus[0]["memory_gib"]
+    else:
+        facts["accelerator_memory_gib"] = sum(gpu["memory_gib"] for gpu in gpus)
+    return facts
+
+
 #: ``df -P -k``: filesystem, 1024-blocks, used, available, capacity, mount.
 _DF_LINE = re.compile(
     r"^(?P<fs>\S+)\s+(?P<blocks>\d+)\s+(?P<used>\d+)\s+(?P<avail>\d+)\s+"
@@ -324,8 +386,8 @@ def _storage(
     LAYER_METAL,
     "CPU, memory, storage, thermals, and board identity of the machine running the survey",
     tools={
-        "darwin": ("sysctl", "sw_vers", "pmset", "df"),
-        "linux": ("uname", "df"),
+        "darwin": ("sysctl", "sw_vers", "pmset", "df", "nvidia-smi"),
+        "linux": ("uname", "df", "nvidia-smi"),
     },
 )
 def scan_host(ctx: ScanContext) -> ScanResult:
@@ -370,6 +432,8 @@ def scan_host(ctx: ScanContext) -> ScanResult:
     telemetry.update(storage_telemetry)
     for note in storage_notes:
         result.warn(note)
+
+    facts.update(_accelerators(ctx, log))
 
     label = hostname
     if "model" in facts:

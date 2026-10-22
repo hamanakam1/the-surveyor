@@ -8,6 +8,12 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **Accelerators.** On an edge box that runs models locally, the accelerator
+  is often the most load-bearing fact there is, and it was invisible. The
+  host scanner now asks `nvidia-smi` what is attached and records the count,
+  the name, the total memory and the driver as *facts* — the card does not
+  become a different card, so it belongs to the map rather than to the
+  weather.
 - **`surveyor doctor`**: what this machine actually lets the Surveyor see.
   The first question on an unfamiliar box is always "why is my power layer
   empty?", and the answer is always one of three things — the tool is not

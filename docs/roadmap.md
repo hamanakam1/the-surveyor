@@ -29,7 +29,7 @@ are a record of decisions rather than a snapshot of intent.
 | B2 — storage and volumes | **partly** | filesystems are facts on the host; container volumes are nodes; filesystems as nodes is an OET 1.1 decision |
 | B3 — containers beyond Docker | **done** | Docker, podman and nerdctl, normalised into one record |
 | B4 — schedulers | **done** | systemd units and launchd daemons |
-| B5 — accelerators | **open** | `nvidia-smi` is allowlisted but nothing calls it |
+| B5 — accelerators | **partly** | the card, its memory and its driver are facts; which workload is using it is not yet |
 | B6 — peers, and a gateway that is not a guess | **done** | the neighbour table, and device ids that survive a DHCP lease |
 | B7 — power beyond AC and battery | **partly** | the layer stopped claiming more than the OS knows; macOS still cannot tell a UPS from a wall socket |
 | B8 — identity stability | **done** | devices are named by hardware address, long names carry a digest |
@@ -464,6 +464,23 @@ fact, used is telemetry), and which model server is using it. On Apple
 silicon, expose the unified-memory split. Consider a fifth layer, `compute`,
 between `metal` and `workload` — but only if the evidence supports it; the
 four-layer model is a feature and should not be extended for tidiness.
+
+**Done in this release.** The host scanner asks `nvidia-smi` what is
+attached and records the count, the name, the total memory and the driver
+as **facts**. The card does not become a different card, so it belongs to
+the map rather than to the weather. No new layer and no new noun: the
+accelerator is a property of the machine, and the four-layer model does not
+need to grow.
+
+On macOS the accelerator is part of the unified memory, which the host
+scanner already reports.
+
+**Still to do.** Which *workload* is using the accelerator.
+`nvidia-smi --query-compute-apps` answers it, and an edge box running two
+model servers on one card is a fact an operator wants. It needs the process
+list, which is only visible to the owning user, so it is a per-user view
+rather than a machine view — a distinction the plat does not currently
+make.
 
 ### B6. Peers, and a gateway that is not a guess
 
