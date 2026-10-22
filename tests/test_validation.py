@@ -183,3 +183,37 @@ def test_every_problem_carries_a_path_and_a_message():
         assert problem.path
         assert problem.message
         assert problem.to_dict()["code"] == problem.code
+
+
+def test_the_spec_names_every_conformance_case():
+    """The specification points at the corpus; the corpus must be there."""
+
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    spec_text = (root / "docs" / "oet-1.0.md").read_text(encoding="utf-8")
+    named = set(re.findall(r"`([a-z0-9-]+__[a-z0-9-]+\.json)`", spec_text))
+    assert named, "the spec should point at the conformance corpus"
+
+    on_disk = {path.name for path in (root / "tests" / "fixtures" / "invalid").glob("*.json")}
+    assert named <= on_disk, f"the spec names cases that do not exist: {named - on_disk}"
+    assert on_disk <= named, f"these cases are not in the spec: {on_disk - named}"
+
+
+def test_the_committed_schema_matches_the_generator():
+    """The schema is generated from the model, so it cannot drift away."""
+
+    import importlib.util
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "make_schema", root / "scripts" / "make_schema.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    committed = (root / "schema" / "oet-1.0.schema.json").read_text(encoding="utf-8")
+    assert committed == module.render(), (
+        "schema/oet-1.0.schema.json is stale; run `make schema`"
+    )
