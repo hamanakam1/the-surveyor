@@ -258,7 +258,7 @@ the cadence.
 
 ```bash
 python3 -m pip install -e ".[dev]"
-make test        # 119 tests, well under a second, no network
+make test        # 121 tests, well under a second, no network
 make demo        # survey into a throwaway ledger
 make scan        # survey this machine
 make validate    # validate the bundled sample and a fresh plat
