@@ -248,6 +248,7 @@ import — into a single map.
 ```bash
 surveyor fleet                       # the composed ASCII map
 surveyor fleet --site shed           # only the hosts of one site
+surveyor fleet --redact              # mask the identifiers first
 surveyor fleet --format mermaid       # a diagram GitHub renders
 surveyor fleet --json                # hosts, sites, and anything unresolved
 ```

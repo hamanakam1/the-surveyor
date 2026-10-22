@@ -330,6 +330,22 @@ def test_fleet_can_be_narrowed_to_one_site(tmp_path, monkeypatch, capsys):
     assert cli.main(["--store", str(store), "fleet", "--site", "nowhere"]) == 1
 
 
+def test_a_fleet_map_can_be_redacted(tmp_path, monkeypatch, capsys):
+    """A composed map covers several hosts, so it carries several sets of names."""
+
+    plat = build_topology()
+    plat.site = "alpha"
+    _stub_survey(monkeypatch, [plat])
+    store = tmp_path / "ledger"
+    assert cli.main(["--store", str(store), "scan", "--quiet"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(["--store", str(store), "fleet", "--redact", "--format", "json"]) == 0
+    document = capsys.readouterr().out
+    assert "host:sha256:" in document
+    assert "host:lab" not in document
+
+
 def test_show_missing_ledger_is_an_error(tmp_path, capsys):
     assert cli.main(["--store", str(tmp_path / "none"), "show"]) == 1
     assert "no survey available" in capsys.readouterr().err

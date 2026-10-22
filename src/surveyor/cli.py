@@ -201,6 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="ascii",
     )
     fleet.add_argument("--output", "--out", dest="output", help="write the map here")
+    fleet.add_argument("--redact", action="store_true", help="mask identifiers first")
     fleet.add_argument("--json", action="store_true", help="print a summary instead")
     fleet.set_defaults(handler=_cmd_fleet)
 
@@ -914,6 +915,13 @@ def _cmd_fleet(args: argparse.Namespace) -> int:
     sites = host_sites(plats)
     composition = compose(plats, site=args.site or config.site)
     tag_hosts(composition.topology, sites)
+
+    if args.redact:
+        # One aliaser for the whole composition, so the same hostname gets
+        # the same alias in every host's part of the map.
+        from .redact import redact_topology
+
+        composition.topology = redact_topology(composition.topology, salt=ledger.salt)
 
     if args.json:
         _emit_json(summarise(composition, sites))

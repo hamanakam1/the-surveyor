@@ -8,6 +8,10 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **`surveyor fleet --redact`.** A composed map covers several hosts, so it
+  carries several sets of names. One aliaser is used for the whole
+  composition, so the same hostname gets the same alias in every host's part
+  of the map.
 - **A plat can be cut down.** `surveyor show --layer`, `--kind` and `--tag`
   narrow a plat to the nodes that match and the edges between them. A
   modern edge box has hundreds of nodes and most questions are about a part
