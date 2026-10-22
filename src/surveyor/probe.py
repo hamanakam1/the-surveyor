@@ -41,6 +41,7 @@ from .errors import ProbeError
 ALLOWED_PROGRAMS = frozenset(
     {
         "arp",
+        "df",
         "docker",
         "ifconfig",
         "ioreg",

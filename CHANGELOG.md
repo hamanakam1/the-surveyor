@@ -8,6 +8,16 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **Storage.** A box whose disk filled up looked unchanged: the host scanner
+  reported CPU, memory and thermals, and nothing about where the data lived.
+  The scanner now reads `df -P -k` and records the number of filesystems,
+  their mount points, and the capacity of the largest one as *facts* — the
+  shape of the machine — and the used, free and percentage-full figures as
+  *telemetry*, because a disk that fills has not changed, it has merely run
+  out of room. Sizes are deliberately **not** summed: an APFS container
+  reports the same capacity from five different mounts, and adding them up
+  would report five times the disk the machine actually has. The plat says
+  so in a warning when it notices a shared container.
 - **IPv6, first class.** The network scanner parsed only `inet` records, so
   every IPv6 address, prefix and route was invisible, and an IPv6-only
   interface was dropped as "an interface without an IPv4 address". IPv6

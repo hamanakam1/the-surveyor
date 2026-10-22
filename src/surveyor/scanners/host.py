@@ -11,6 +11,7 @@ import os
 import platform
 import re
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from ..identity import host_id as local_host_id
@@ -136,7 +137,7 @@ def _thermal_telemetry(ctx: ScanContext, log: ProbeLog) -> dict[str, Any]:
                         telemetry["cpu_speed_limit"] = int(line.split("=")[-1].strip())
                     except ValueError:
                         pass
-                elif "No thermal warning level" not in line and "warning" in line.lower():
+                elif not line.lower().startswith("note:") and "warning" in line.lower():
                     telemetry["thermal_warning"] = line.strip()[:_THERMAL_NOTE_LIMIT]
     return telemetry
 
@@ -173,10 +174,132 @@ def _virtualisation() -> str | None:
     return None
 
 
+#: ``df -P -k``: filesystem, 1024-blocks, used, available, capacity, mount.
+_DF_LINE = re.compile(
+    r"^(?P<fs>\S+)\s+(?P<blocks>\d+)\s+(?P<used>\d+)\s+(?P<avail>\d+)\s+"
+    r"(?P<pct>\d+)%\s+(?P<mount>.+)$"
+)
+
+#: Pseudo-filesystems that are not storage.
+_PSEUDO_FS = frozenset(
+    {
+        "autofs",
+        "devfs",
+        "devtmpfs",
+        "proc",
+        "procfs",
+        "pseudofs",
+        "snapfs",
+        "sysfs",
+        "tmpfs",
+        "auto_home",
+        "devfs",
+        "fdescfs",
+        "cgroup",
+        "cgroup2",
+        "securityfs",
+        "debugfs",
+        "tracefs",
+        "configfs",
+        "fusectl",
+        "mqueue",
+        "hugetlbfs",
+        "ramfs",
+        "binfmt_misc",
+        "efivarfs",
+        "nsfs",
+        "squashfs",
+        "overlay",
+        "none",
+    }
+)
+
+
+@dataclass(slots=True)
+class Filesystem:
+    """One mounted filesystem."""
+
+    device: str
+    mount: str
+    total_bytes: int = 0
+    used_bytes: int = 0
+    free_bytes: int = 0
+    percent: int = 0
+
+
+def parse_df(text: str) -> list[Filesystem]:
+    """Parse POSIX ``df -P -k`` output."""
+
+    filesystems: list[Filesystem] = []
+    for raw in text.splitlines():
+        match = _DF_LINE.match(raw.strip())
+        if not match:
+            continue
+        device = match.group("fs")
+        if device in _PSEUDO_FS:
+            continue
+        blocks = int(match.group("blocks"))
+        filesystems.append(
+            Filesystem(
+                device=device,
+                mount=match.group("mount").strip(),
+                total_bytes=blocks * 1024,
+                used_bytes=int(match.group("used")) * 1024,
+                free_bytes=int(match.group("avail")) * 1024,
+                percent=int(match.group("pct")),
+            )
+        )
+    return filesystems
+
+
+def _storage(
+    ctx: ScanContext, log: ProbeLog
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    """What is attached to this machine, and how much room is left.
+
+    The size of a disk and where it is mounted are shape. How full it is
+    is weather: a disk that fills up has not changed, it has merely run
+    out of room, and the map should not churn every time it does.
+
+    Sizes are *not* summed. On an APFS volume, or any filesystem with
+    several volumes on one container, five mounts can report the same
+    capacity, and adding them up would report five times the disk the
+    machine actually has.
+    """
+
+    probe = log.add(run(["df", "-P", "-k"], timeout=ctx.timeout))
+    if not probe.ok:
+        return {}, {}, []
+
+    filesystems = parse_df(probe.stdout)
+    if not filesystems:
+        return {}, {}, []
+
+    notes: list[str] = []
+    capacities = [item.total_bytes for item in filesystems]
+    if len(capacities) != len(set(capacities)):
+        notes.append(
+            "several filesystems share a container; sizes are reported per "
+            "filesystem and are not summed"
+        )
+
+    facts: dict[str, Any] = {
+        "storage_filesystems": len(filesystems),
+        "storage_mounts": sorted(item.mount for item in filesystems),
+        "storage_capacity_bytes": max(capacities),
+    }
+    telemetry: dict[str, Any] = {
+        "storage_used_bytes": max(item.used_bytes for item in filesystems),
+        "storage_free_bytes": max(item.free_bytes for item in filesystems),
+        "storage_used_percent": max(item.percent for item in filesystems),
+    }
+    return facts, telemetry, notes
+
+
 @register(
     "host",
     LAYER_METAL,
-    "CPU, memory, thermals, and board identity of the machine running the survey",
+    "CPU, memory, storage, thermals, and board identity of the machine running the survey",
 )
 def scan_host(ctx: ScanContext) -> ScanResult:
     log = ProbeLog()
@@ -214,6 +337,12 @@ def scan_host(ctx: ScanContext) -> ScanResult:
     telemetry.update(_thermal_telemetry(ctx, log))
     if uptime_seconds is not None:
         telemetry["uptime_seconds"] = uptime_seconds
+
+    storage_facts, storage_telemetry, storage_notes = _storage(ctx, log)
+    facts.update(storage_facts)
+    telemetry.update(storage_telemetry)
+    for note in storage_notes:
+        result.warn(note)
 
     label = hostname
     if "model" in facts:

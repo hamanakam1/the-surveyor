@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from surveyor.scanners.host import parse_df
 from surveyor.scanners.network import (
     classify,
     parse_arp_an,
@@ -10,6 +11,35 @@ from surveyor.scanners.network import (
 )
 from surveyor.scanners.power import _parse_ioreg_battery, _parse_pmset_batt
 from surveyor.scanners.workloads import _bind_of, _parse_labels, _published_ports
+
+DF = """Filesystem     1024-blocks      Used Available Capacity  Mounted on
+/dev/disk3s1s1   971350180  13340060  10525016    56%    /
+devfs                  207       207         0   100%    /dev
+/dev/disk3s5     971350180 886325376  10525016    99%    /System/Volumes/Data
+map auto_home            0         0         0   100%    /System/Volumes/Data/home
+/dev/disk4s1        634756    631956      2800   100%    /Volumes/Kiro CLI
+"""
+
+
+def test_parse_df_reads_the_real_filesystems():
+    filesystems = parse_df(DF)
+    # devfs and auto_home are not storage.
+    assert len(filesystems) == 3
+    root = filesystems[0]
+    assert root.device == "/dev/disk3s1s1"
+    assert root.mount == "/"
+    assert root.total_bytes == 971350180 * 1024
+    assert root.percent == 56
+
+
+def test_parse_df_keeps_a_mount_point_with_spaces():
+    filesystems = parse_df(DF)
+    assert any(item.mount == "/Volumes/Kiro CLI" for item in filesystems)
+
+
+def test_parse_df_of_nothing_is_nothing():
+    assert parse_df("") == []
+    assert parse_df("Filesystem 1024-blocks Used Available Capacity Mounted on\n") == []
 
 IFCONFIG = """lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
 \tinet 127.0.0.1 netmask 0xff000000

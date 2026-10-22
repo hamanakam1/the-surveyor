@@ -22,7 +22,7 @@ The map is read top-down, from the wall socket to the listening socket.
 | Layer | Key | Holds |
 | --- | --- | --- |
 | Power | `power` | utility feeds, batteries, UPS, solar where the OS reports it |
-| Bare metal | `metal` | the surveyed host itself |
+| Bare metal | `metal` | the surveyed host itself: CPU, memory, storage, thermals, board |
 | Network | `network` | interfaces, IPv4 and IPv6 subnets, unverified devices such as the default gateway |
 | Workloads | `workload` | containers, model servers, models, listening services, volumes |
 

@@ -302,10 +302,36 @@ only speak IPv6. Those peers are invisible until the parsers learn the
 spec, and emitted by no scanner. The `df` and `mount` commands are on the
 probe allowlist and unused. A box whose disk filled up looks unchanged.
 
-**Work.** A `storage` dimension, either a new scanner or an extension of
-`host`: filesystems, mount points, total and free space (free space is
-telemetry, total and mount topology are facts), read-only mounts, and bind
-mounts for containers. Emit `volume:` nodes and `mounts` edges.
+**Done in this release.** The host scanner reads `df -P -k` and records the
+number of filesystems, their mount points, and the capacity of the largest
+one as **facts** — the shape of the machine — and the used, free and
+percentage-full figures as **telemetry**, because a disk that fills has not
+changed, it has merely run out of room, and the map must not churn every
+time it does.
+
+Sizes are deliberately **not** summed. An APFS container reports the same
+capacity from five different mounts; adding them up reports five times the
+disk the machine actually has. The plat says so in a warning when it
+notices a shared container, because a number that looks wrong should say
+why it is wrong.
+
+**Still to do.** Two things remain, and both need a decision about the
+format rather than about the code:
+
+1. **Container volumes.** `docker ps` reports mounts, and a named volume is
+   already a `volume:` node in the model and the spec — a noun that exists
+   in the format and in no plat. It wants a `volume:` node per named volume
+   and a bind mount, with an `attaches_to` edge from the workload that
+   mounts it. A bind mount's *source* is a path on the host, and a path
+   under the operator's home directory is an identifier; the container's
+   *destination* is the safe half of the pair.
+2. **Filesystems as nodes.** A disk is arguably a thing in its own right,
+   with an identity, a size, and a mount point — which argues for a
+   `filesystem:` node kind rather than facts on the host. The format's own
+   rule is that a new noun needs a version bump, so this is an OET 1.1
+   decision, and it should be taken once, with the whole vocabulary, rather
+   than one noun at a time.
+
 
 ### B3. Containers beyond Docker
 
