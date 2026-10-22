@@ -194,6 +194,16 @@ All notable changes to The Surveyor. The format follows
 
 ### Changed
 
+- **The survey is about a fifth faster.** The host scanner asked the kernel
+  for its model, CPU, core count and memory in six separate `sysctl`
+  processes; `sysctl -n` takes several keys at once, so one process does the
+  work — with a fallback to one call per key for the case where the kernel
+  does not know one of them, because a missing key shifts every value after
+  it. The host scanner went from 380ms to 38ms. The TCP and the UDP socket
+  tables come from the same `lsof` command, so asking twice cost three times
+  as much for the same answer; one call now does both, and the workloads
+  scanner went from 196ms to 130ms. A full five-layer survey went from
+  336ms to 271ms.
 - **The ASCII map shows the hubs first.** A modern edge box has hundreds of
   scheduled services and a handful of things that actually matter, and a map
   that shows the first six alphabetically showed the reader neither. Nodes

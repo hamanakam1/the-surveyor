@@ -609,6 +609,28 @@ wherever possible, and make the fan-out deadline adaptive rather than fixed.
 Target: a full four-layer survey of a busy Linux box in under 150ms, and a
 `surveyor scan` that costs less than one percent of a core.
 
+**Done in this release.** Two changes, both measured:
+
+- **Six `sysctl` calls became one.** The host scanner asked the kernel for
+  its model, its CPU, its core count and its memory in six separate
+  processes. `sysctl -n` takes several keys at once and answers them in
+  order, so one process does the work — with a fallback to one call per key
+  for the case where the kernel does not know one of them, because a missing
+  key shifts every value after it. The host scanner went from **380ms to
+  38ms**.
+- **Two `lsof` calls became one.** The TCP and the UDP socket tables come
+  from the same command, and asking twice cost three times as much for the
+  same answer. The workloads scanner went from **196ms to 130ms**.
+
+A full five-layer survey of this machine went from 336ms to 271ms.
+
+**Still to do.** The budget is not yet a test, because a wall-clock budget
+in CI is a flaky test. What *is* a test now: compiling a thousand nodes must
+not take longer than two seconds, which catches a merge that compares every
+node with every other node. The remaining cost is in the network scanner,
+where four different programs each answer a different question, and in
+probing for a container runtime that is installed but not running.
+
 ---
 
 ## 5. Horizon C — Fleet (2.x)

@@ -14,7 +14,8 @@ from surveyor.scanners.workloads import (
     _bind_of,
     _parse_labels,
     _published_ports,
-    parse_lsof_udp,
+    parse_lsof_sockets,
+    parse_ss_tcp,
     parse_ss_udp,
 )
 
@@ -27,11 +28,13 @@ map auto_home            0         0         0   100%    /System/Volumes/Data/ho
 """
 
 
-LSOF_UDP = """COMMAND     PID            USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+LSOF_SOCKETS = """COMMAND     PID            USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
 rapportd    681 michaelhamanaka   19u  IPv6 0x9df37d98c999a5dc      0t0  UDP *:3722
 identitys   709 michaelhamanaka    7u  IPv4 0xce1b0aba7d4cf666      0t0  UDP *:*
 sharingd    718 michaelhamanaka   14u  IPv6 0x50860af2487a2e5      0t0  UDP *:55894
 Codex       5539 michaelhamanaka   23u  IPv4 0x3b3f4b1d477c007a      0t0  UDP 192.168.53.209:64495->160.79.104.10:443
+rapportd    681 michaelhamanaka   11u  IPv4 0xc0a608bd765229a1      0t0  TCP *:49181 (LISTEN)
+Codex       5539 michaelhamanaka   24u  IPv4 0x3b3f4b1d477c008b      0t0  TCP 192.168.53.209:52660->17.248.192.52:443 (ESTABLISHED)
 """
 
 SS_UDP = """State  Recv-Q Send-Q Local Address:Port  Peer Address:Port
@@ -40,24 +43,33 @@ UNCONN 0      0          127.0.0.53:53         0.0.0.0:*
 UNCONN 0      0            0.0.0.0:5353        0.0.0.0:*
 """
 
+SS_TCP = """State  Recv-Q Send-Q Local Address:Port  Peer Address:Port
+LISTEN 0      128          0.0.0.0:8080        0.0.0.0:*
+LISTEN 0      128          0.0.0.0:9000        0.0.0.0:*
+ESTAB  0      0          10.0.0.1:52000        10.0.0.2:9000
+"""
 
-def test_parse_lsof_udp_reads_only_the_bound_services():
-    services = parse_lsof_udp(LSOF_UDP)
-    addresses = {(command, port) for command, _, port in services}
-    assert ("rapportd", 3722) in addresses
-    assert ("sharingd", 55894) in addresses
+
+def test_parse_lsof_reads_only_the_sockets_that_are_services():
+    sockets = parse_lsof_sockets(LSOF_SOCKETS)
+    udp = {(item.command, item.port) for item in sockets if item.family == "udp"}
+    tcp = {(item.command, item.port) for item in sockets if item.family == "tcp"}
+    assert ("rapportd", 3722) in udp
+    assert ("sharingd", 55894) in udp
     # "*:*" is an ephemeral port: an outgoing client, not a service.
-    assert len(services) == 2
-    # A connected socket is a conversation, not a service.
-    assert not [item for item in services if item[2] == 64495]
+    assert len(udp) == 2
+    # A connected UDP socket is a conversation, not a service.
+    assert not [item for item in sockets if item.port == 64495]
+    # A TCP socket is a service only when it is listening.
+    assert ("rapportd", 49181) in tcp
+    assert not [item for item in sockets if item.family == "tcp" and item.port == 52660]
 
 
-def test_parse_ss_udp_reads_the_listening_ports():
-    services = parse_ss_udp(SS_UDP)
-    ports = {port for _, _, port in services}
-    assert 53 in ports
-    assert 5353 in ports
-    assert 68 in ports
+def test_parse_ss_reads_the_listening_ports():
+    tcp = parse_ss_tcp(SS_TCP)
+    assert {item.port for item in tcp} == {8080, 9000}
+    udp = parse_ss_udp(SS_UDP)
+    assert {item.port for item in udp} == {53, 5353, 68}
 
 
 def test_lsof_escapes_are_decoded():

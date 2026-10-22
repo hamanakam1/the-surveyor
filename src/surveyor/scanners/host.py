@@ -22,31 +22,56 @@ from .base import ScanContext, ScanResult, register
 
 _THERMAL_NOTE_LIMIT = 200
 
+#: The ``sysctl`` keys the machine's identity is made of, and the fact
+#: each one becomes.
+_SYSCTL_KEYS: tuple[tuple[str, str], ...] = (
+    ("model", "hw.model"),
+    ("cpu_model", "machdep.cpu.brand_string"),
+    ("cpu_cores", "hw.ncpu"),
+    ("cpu_cores_physical", "hw.physicalcpu"),
+    ("mem_bytes", "hw.memsize"),
+)
+
+#: Facts that are numbers rather than strings.
+_NUMERIC_FACTS = {"cpu_cores", "cpu_cores_physical", "mem_bytes"}
+
+
+def _put(facts: dict[str, Any], key: str, value: str) -> None:
+    """Record one probed value, as a number where it is one."""
+
+    if not value:
+        return
+    if key in _NUMERIC_FACTS:
+        try:
+            facts[key] = int(value)
+        except ValueError:
+            return
+    else:
+        facts[key] = value
+
 
 def _macos_identity(ctx: ScanContext, log: ProbeLog) -> dict[str, Any]:
     facts: dict[str, Any] = {}
-    probes = {
-        "arch": ("uname", ["uname", "-m"]),
-        "model": ("sysctl", ["sysctl", "-n", "hw.model"]),
-        "cpu_model": ("sysctl", ["sysctl", "-n", "machdep.cpu.brand_string"]),
-        "cpu_cores": ("sysctl", ["sysctl", "-n", "hw.ncpu"]),
-        "cpu_cores_physical": ("sysctl", ["sysctl", "-n", "hw.physicalcpu"]),
-        "mem_bytes": ("sysctl", ["sysctl", "-n", "hw.memsize"]),
-    }
-    for key, (_program, argv) in probes.items():
-        probe = log.add(run(argv, timeout=ctx.timeout))
-        if not probe.ok:
-            continue
-        value = probe.first_line()
-        if not value:
-            continue
-        if key in {"cpu_cores", "cpu_cores_physical", "mem_bytes"}:
-            try:
-                facts[key] = int(value)
-            except ValueError:
-                continue
-        else:
-            facts[key] = value
+
+    arch = log.add(run(["uname", "-m"], timeout=ctx.timeout))
+    if arch.ok and arch.first_line():
+        facts["arch"] = arch.first_line()
+
+    # One process for all of them: six ``sysctl`` calls cost six process
+    # spawns, and this runs on every survey.
+    keys = [key for _, key in _SYSCTL_KEYS]
+    probe = log.add(run(["sysctl", "-n", *keys], timeout=ctx.timeout))
+    values = probe.lines()
+    if len(values) == len(keys):
+        for (fact_key, _), value in zip(_SYSCTL_KEYS, values, strict=True):
+            _put(facts, fact_key, value)
+    else:
+        # A key the kernel does not know shifts every value after it, so
+        # the batch cannot be trusted. Ask one key at a time.
+        for fact_key, key in _SYSCTL_KEYS:
+            single = log.add(run(["sysctl", "-n", key], timeout=ctx.timeout))
+            if single.ok:
+                _put(facts, fact_key, single.first_line())
 
     sw_vers = log.add(run(["sw_vers"], timeout=ctx.timeout))
     if sw_vers.ok:
