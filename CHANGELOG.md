@@ -8,6 +8,16 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **`surveyor export` and `surveyor import`**: a plat can cross a ledger
+  boundary. A plat is a file, and a file can be shipped — which is the first
+  half of the fleet story and the thing that makes the tool composable.
+  An import is recorded like any other entry, so the hash chain covers it
+  and `surveyor verify` proves it was not edited. It does not disturb this
+  host's own history: `HEAD` is still the newest survey *this* host took and
+  `HEAD~1` is the previous one, skipping whatever arrived from elsewhere.
+  Re-importing the same plat changes nothing, exactly as re-surveying an
+  unchanged machine changes nothing. An imported plat is addressable by the
+  host it describes: `surveyor show host:shed`.
 - **Lint and type checking in CI.** `ruff` and `mypy` now gate every
   change, with the project's own rule set declared in `pyproject.toml`
   rather than inherited from whatever a neighbouring checkout happens to

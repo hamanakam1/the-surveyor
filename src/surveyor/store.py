@@ -112,6 +112,13 @@ class LedgerEntry:
     site: str = ""
     counts: dict[str, Any] = field(default_factory=dict)
     note: str = ""
+    #: ``local`` for a survey this host took, ``imported`` for one that
+    #: arrived from somewhere else. The chain covers both; only the local
+    #: ones are this host's own history.
+    origin: str = "local"
+    #: The host a plat describes. Empty for a local survey, where it is
+    #: this host by definition.
+    host: str = ""
 
     def payload(self) -> dict[str, Any]:
         """The bytes that are hashed into ``entry_digest``."""
@@ -125,6 +132,8 @@ class LedgerEntry:
             "site": self.site,
             "counts": self.counts,
             "note": self.note,
+            "origin": self.origin,
+            "host": self.host,
         }
 
     def sign(self) -> LedgerEntry:
@@ -134,6 +143,10 @@ class LedgerEntry:
     @property
     def short(self) -> str:
         return short_digest(self.digest)
+
+    @property
+    def imported(self) -> bool:
+        return self.origin != "local"
 
     def to_dict(self) -> dict[str, Any]:
         return {**self.payload(), "entry_digest": self.entry_digest}
@@ -151,6 +164,8 @@ class LedgerEntry:
                 site=str(data.get("site") or ""),
                 counts=dict(data.get("counts") or {}),
                 note=str(data.get("note") or ""),
+                origin=str(data.get("origin") or "local"),
+                host=str(data.get("host") or ""),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise StoreError(f"journal entry is malformed: {exc}") from exc
@@ -293,8 +308,40 @@ class Ledger:
         return entries
 
     def head(self) -> LedgerEntry | None:
+        """The newest entry *this host* recorded.
+
+        An imported plat belongs to another host, so it does not become this
+        host's HEAD: `surveyor diff HEAD~1 HEAD` has to keep comparing
+        this host's own surveys with each other.
+        """
+
+        for entry in reversed(self.history()):
+            if not entry.imported:
+                return entry
+        return None
+
+    def imports(self) -> list[LedgerEntry]:
+        """The newest imported plat for each host."""
+
+        newest: dict[str, LedgerEntry] = {}
+        for entry in self.history():
+            if entry.imported:
+                newest[entry.host or entry.digest] = entry
+        return [newest[key] for key in sorted(newest)]
+
+    def tip(self) -> LedgerEntry | None:
+        """The newest entry of any kind -- what the HEAD file points at."""
+
         entries = self.history()
         return entries[-1] if entries else None
+
+    def import_of(self, host: str) -> LedgerEntry | None:
+        """The newest plat imported from a given host."""
+
+        for entry in reversed(self.history()):
+            if entry.imported and entry.host == host:
+                return entry
+        return None
 
     def get(self, digest: str) -> Topology:
         path = self._object_path(digest)
@@ -314,10 +361,12 @@ class Ledger:
         return Topology.from_dict(data)
 
     def latest(self) -> Topology:
-        head = self.head()
-        if head is None:
+        """The newest plat in the ledger, whoever surveyed it."""
+
+        tip = self.tip()
+        if tip is None:
             raise StoreError(f"ledger at {self.root} is empty; run `surveyor scan` first")
-        return self.get(head.digest)
+        return self.get(tip.digest)
 
     def entry_at(self, seq: int) -> LedgerEntry:
         for entry in self.history():
@@ -333,6 +382,21 @@ class Ledger:
         except StoreError:
             return None
 
+    def previous_local(self, entry: LedgerEntry | None) -> LedgerEntry | None:
+        """The local entry recorded before this one.
+
+        Imports do not break a host's own history: the survey before this
+        one is the previous *local* survey, not the previous entry in the
+        journal.
+        """
+
+        if entry is None:
+            return None
+        for candidate in reversed(self.history()):
+            if candidate.seq < entry.seq and not candidate.imported:
+                return candidate
+        return None
+
     # -- writing ----------------------------------------------------------
     def commit(
         self,
@@ -341,6 +405,36 @@ class Ledger:
         note: str = "",
         force: bool = False,
     ) -> CommitResult:
+        return self._commit(topology, note=note, force=force, origin="local", host="")
+
+    def commit_import(
+        self,
+        topology: Topology,
+        *,
+        host: str,
+        note: str = "",
+        force: bool = False,
+    ) -> CommitResult:
+        """Record a plat that came from another host.
+
+        The import is idempotent per host: re-importing the same plat from
+        the same host changes nothing, exactly as re-surveying an unchanged
+        machine changes nothing.
+        """
+
+        return self._commit(
+            topology, note=note, force=force, origin="imported", host=host
+        )
+
+    def _commit(
+        self,
+        topology: Topology,
+        *,
+        note: str,
+        force: bool,
+        origin: str,
+        host: str,
+    ) -> CommitResult:
         document = topology.to_dict()
         payload = canonical_json(document)
         digest = "sha256:" + sha256_hex(payload)
@@ -348,13 +442,31 @@ class Ledger:
         with self._locked():
             history = self.history()
             head = history[-1] if history else None
-            if head is not None and not force and head.fingerprint == topology.fingerprint:
-                return CommitResult(
-                    created=False,
-                    entry=head,
-                    previous=self.previous_of(head),
-                    reason="structural fingerprint unchanged",
-                )
+            if not force:
+                # Idempotence is per source: a local survey compares with
+                # the last local survey, an import with the last import
+                # from the same host.
+                if origin == "local":
+                    comparable = next(
+                        (entry for entry in reversed(history) if not entry.imported),
+                        None,
+                    )
+                else:
+                    comparable = next(
+                        (
+                            entry
+                            for entry in reversed(history)
+                            if entry.imported and entry.host == host
+                        ),
+                        None,
+                    )
+                if comparable is not None and comparable.fingerprint == topology.fingerprint:
+                    return CommitResult(
+                        created=False,
+                        entry=comparable,
+                        previous=self.previous_of(comparable),
+                        reason="structural fingerprint unchanged",
+                    )
 
             path = self._object_path(digest)
             if not path.exists():
@@ -369,6 +481,8 @@ class Ledger:
                 site=topology.site,
                 counts=topology.counts(),
                 note=note,
+                origin=origin,
+                host=host,
             ).sign()
             with open(self.journal, "a", encoding="utf-8") as handle:
                 handle.write(canonical_json(entry.to_dict()) + "\n")
@@ -448,8 +562,8 @@ class Ledger:
             parent = entry.entry_digest
 
         report.objects = len(seen_digests)
-        head = self.head()
-        if head is None or head.entry_digest != entries[-1].entry_digest:
+        tip = self.tip()
+        if tip is None or tip.entry_digest != entries[-1].entry_digest:
             report.problems.append("HEAD does not point at the newest entry")
             report.ok = False
         return report

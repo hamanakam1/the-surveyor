@@ -213,6 +213,47 @@ def test_validate_rejects_unknown_versions(tmp_path, capsys):
     assert "unsupported" in capsys.readouterr().err
 
 
+def test_export_writes_a_plat_and_import_records_it(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    exported = tmp_path / "plat.json"
+
+    _stub_survey(monkeypatch, [build_topology()])
+    assert cli.main(["--store", str(source), "scan", "--quiet"]) == 0
+    assert cli.main(["--store", str(source), "export", "HEAD", "--output", str(exported)]) == 0
+    assert exported.exists()
+
+    assert cli.main(["--store", str(target), "import", str(exported)]) == 0
+    out = capsys.readouterr().out
+    assert "imported" in out
+
+    # The imported plat is addressable by the host it describes.
+    assert cli.main(["--store", str(target), "show", "host:lab", "--format", "json"]) == 0
+    assert "host:lab" in capsys.readouterr().out
+
+
+def test_importing_the_same_plat_twice_changes_nothing(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    exported = tmp_path / "plat.json"
+
+    _stub_survey(monkeypatch, [build_topology()])
+    cli.main(["--store", str(source), "scan", "--quiet"])
+    cli.main(["--store", str(source), "export", "HEAD", "--output", str(exported)])
+
+    assert cli.main(["--store", str(target), "import", str(exported)]) == 0
+    capsys.readouterr()
+    assert cli.main(["--store", str(target), "import", str(exported)]) == 0
+    assert "unchanged" in capsys.readouterr().out
+
+
+def test_import_refuses_a_broken_document(tmp_path, capsys):
+    path = tmp_path / "broken.json"
+    path.write_text(json.dumps({"oet_version": "1.0"}))
+    assert cli.main(["--store", str(tmp_path / "ledger"), "import", str(path)]) == 1
+    assert "missing-field" in capsys.readouterr().err
+
+
 def test_show_missing_ledger_is_an_error(tmp_path, capsys):
     assert cli.main(["--store", str(tmp_path / "none"), "show"]) == 1
     assert "no survey available" in capsys.readouterr().err

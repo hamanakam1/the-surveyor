@@ -150,6 +150,24 @@ def build_parser() -> argparse.ArgumentParser:
     ping.add_argument("--json", action="store_true")
     ping.set_defaults(handler=_cmd_notify)
 
+    export = subparsers.add_parser(
+        "export", help="write a plat out as a document another ledger can read"
+    )
+    export.add_argument("ref", nargs="?", default="HEAD", help="plat reference (default HEAD)")
+    export.add_argument("--output", "--out", dest="output", help="write the document here")
+    export.add_argument("--redact", action="store_true", help="mask identifiers first")
+    export.set_defaults(handler=_cmd_export)
+
+    importer = subparsers.add_parser(
+        "import", help="record a plat that came from another host"
+    )
+    importer.add_argument("path", help="OET JSON file")
+    importer.add_argument("--host", default=None, help="host id the plat describes")
+    importer.add_argument("--note", default="", help="a note to record with the import")
+    importer.add_argument("--force", action="store_true", help="record even if nothing changed")
+    importer.add_argument("--json", action="store_true")
+    importer.set_defaults(handler=_cmd_import)
+
     art = subparsers.add_parser("banner", help="print the banner")
     art.set_defaults(handler=_cmd_banner)
 
@@ -219,16 +237,24 @@ def _parse_ref(ref: str, ledger: Ledger) -> tuple[Topology | None, str]:
         raise StoreError(f"ledger at {ledger.root} is empty; cannot resolve {ref!r}")
 
     if ref == "HEAD":
-        entry = entries[-1]
+        entry = ledger.head()
+        if entry is None:
+            return None, "empty ledger"
         return ledger.get(entry.digest), f"#{entry.seq}"
     if ref == "HEAD~1":
-        if len(entries) < 2:
+        head = ledger.head()
+        previous = ledger.previous_local(head)
+        if previous is None:
             return None, "before the first survey"
-        entry = entries[-2]
-        return ledger.get(entry.digest), f"#{entry.seq}"
+        return ledger.get(previous.digest), f"#{previous.seq}"
     if ref.isdigit():
         entry = ledger.entry_at(int(ref))
         return ledger.get(entry.digest), f"#{entry.seq}"
+
+    # A host id names the newest plat imported from that host.
+    imported = ledger.import_of(ref)
+    if imported is not None:
+        return ledger.get(imported.digest), f"#{imported.seq}"
 
     matches = [
         entry
@@ -402,7 +428,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     else:
         print(f"  unchanged · HEAD #{commit.entry.seq} · nothing to record")
     if previous is None:
-        print("  first plat for this ledger; every observed node is new")
+        print("  first plat from this host; every observed node is new")
     elif diff.structural and not args.quiet:
         print()
         print(render_text(diff, verbose=False))
@@ -633,6 +659,87 @@ def _cmd_notify(args: argparse.Namespace) -> int:
             else:
                 print(f"✗ {result.endpoint} failed: {result.error}", file=sys.stderr)
     return EXIT_OK if all(result.ok for result in results) else EXIT_ERROR
+
+
+def _cmd_export(args: argparse.Namespace) -> int:
+    """Write a plat out as a document another ledger can read."""
+
+    from .redact import redact_topology
+
+    config = _config(args)
+    ledger = Ledger(config.store)
+    topology, _label = _parse_ref(args.ref, ledger)
+    if topology is None:
+        raise StoreError(f"no survey available at {args.ref}; run `surveyor scan` first")
+
+    if args.redact:
+        topology = redact_topology(topology, salt=ledger.salt)
+
+    document = json.dumps(topology.to_dict(), indent=2, sort_keys=True)
+    if args.output:
+        _write_text(Path(args.output).expanduser(), document)
+        print(f"wrote {args.output}")
+    else:
+        print(document)
+    return EXIT_OK
+
+
+def _cmd_import(args: argparse.Namespace) -> int:
+    """Record a plat that came from another host."""
+
+    from .validation import validate_document
+
+    path = Path(args.path).expanduser()
+    if not path.exists():
+        raise SchemaError(f"{path} not found")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SchemaError(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
+
+    problems = validate_document(data)
+    if problems:
+        for problem in problems:
+            print(f"  - {problem.code}: {problem}", file=sys.stderr)
+        raise SchemaError(f"{path} is not a valid OET document")
+
+    topology = Topology.from_dict(data)
+    host = args.host or _host_of(topology)
+    if not host:
+        raise SchemaError(
+            "the document does not say which host it describes; pass --host"
+        )
+
+    config = _config(args)
+    ledger = Ledger(config.store)
+    result = ledger.commit_import(topology, host=host, note=args.note, force=args.force)
+
+    if args.json:
+        _emit_json(
+            {
+                "path": str(path),
+                "host": host,
+                "recorded": result.created,
+                "unchanged": not result.created,
+                "seq": result.entry.seq,
+                "digest": result.entry.digest,
+                "fingerprint": topology.fingerprint,
+            }
+        )
+    elif result.created:
+        print(f"◈ imported {host} · recorded #{result.entry.seq} · {result.entry.digest[:19]}")
+        print(f"  {topology.counts()['nodes']} nodes · {topology.counts()['edges']} edges")
+    else:
+        print(f"◈ {host} unchanged · nothing to record")
+    return EXIT_OK
+
+def _host_of(topology: Topology) -> str:
+    """The id of the host a plat describes."""
+
+    for node in topology.nodes.values():
+        if node.kind == "host":
+            return node.id
+    return ""
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:

@@ -101,6 +101,8 @@ surveyor scan
 | `surveyor notify` | Send a test notification to the configured webhooks. |
 | `surveyor validate FILE` | Check an OET document against the schema rules. |
 | `surveyor redact FILE` | Mask a plat's identifiers; `--audit` reports what survived. |
+| `surveyor export [REF]` | Write a plat out as a document another ledger can read. |
+| `surveyor import FILE` | Record a plat that came from another host. |
 | `surveyor scanners` | List available scanners. |
 | `surveyor init` | Write a starter `config.toml`. |
 | `surveyor banner` | Print the instrument. |
@@ -137,6 +139,26 @@ cannot.
 identifier that failed to be removed, or a value that merely looks like one
 (an email address, a home directory, a long hex digest). It exits non-zero,
 so it can be used in CI.
+
+### Move a plat between boxes
+
+A plat is a file, and a file can be shipped.
+
+```bash
+# on the box being surveyed
+surveyor export HEAD --output shed.oet.json
+
+# on the box that keeps the record
+surveyor import shed.oet.json
+surveyor show host:shed --format ascii
+```
+
+An import is recorded in the ledger like any other entry, so the hash chain
+covers it and `surveyor verify` proves it was not edited. It does *not*
+disturb this host's own history: `HEAD` is still the newest survey **this**
+host took, and `HEAD~1` is the previous one, skipping whatever arrived from
+elsewhere in between. Re-importing the same plat changes nothing, exactly
+as re-surveying an unchanged machine changes nothing.
 
 
 ### Diff in CI

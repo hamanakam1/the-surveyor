@@ -517,11 +517,34 @@ format either earns the word *standard* or does not.
 corresponding import, and the ledger has no way to accept a plat it did not
 itself produce.
 
-**Work.** `surveyor export REF --output plat.json` and
-`surveyor import plat.json`, where an imported plat is validated, recorded as
-a normal journal entry, and *linked* to the local plat for the same host. The
-import must not break the chain, so imports get their own entry type with a
-`source` field.
+**Done in this release.** `surveyor export [REF] [--output PATH]` writes a
+plat out as a document, and `surveyor import FILE` records one that came
+from somewhere else.
+
+The interesting part is what an import must *not* do:
+
+- **It must not become this host's HEAD.** A plat from another host is not
+  this host's history, and `surveyor diff HEAD~1 HEAD` has to keep
+  comparing this host's own surveys with each other. Journal entries carry
+  an `origin` (`local` or `imported`) and, for an import, the host it
+  describes.
+- **It must not break the previous-local-survey rule.** `HEAD~1` is the
+  previous *local* survey, skipping whatever arrived from elsewhere in
+  between.
+- **It must not be able to churn the ledger.** Idempotence is per source:
+  a local survey compares with the last local survey, an import with the
+  last import from the same host.
+- **It must be in the chain.** An import is a normal journal entry, so the
+  hash chain covers it and `surveyor verify` proves it was not edited.
+
+An imported plat is addressable by the host it describes
+(`surveyor show host:shed`).
+
+**Still to do.** The ledger can now hold plats from many hosts, but it can
+only *answer questions about one of them at a time*. Composing many hosts
+into one map — the thing a site map needs — is C2, and it is the moment the
+OET layer model either holds up or does not.
+
 
 ### C2. One map for many hosts
 
