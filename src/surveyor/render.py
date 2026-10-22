@@ -59,7 +59,7 @@ def _detail(node: Node) -> str:
     telemetry = node.telemetry
     if node.kind == KIND_POWER_SOURCE:
         role = str(facts.get("role") or facts.get("source") or "supply")
-        parts = ["utility" if role == "ac" else role]
+        parts = [role]
         if "charge_percent" in telemetry:
             parts.append(f"{telemetry['charge_percent']}%")
         return " · ".join(parts)

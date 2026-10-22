@@ -126,12 +126,19 @@ def _scan_macos(ctx: ScanContext, result: ScanResult, log: ProbeLog, host_id: st
             _supply_node(
                 supply_id="power:ac",
                 label="AC mains",
-                facts={"source": "utility", "role": "ac", "metered": False},
+                # macOS reports that the machine is drawing from mains and
+                # nothing more. It cannot say whether that is a wall socket
+                # or a UPS, so the plat does not claim to know.
+                facts={"role": "ac", "source": "ac"},
                 telemetry={"present": True},
-                tags=("utility", "always-on"),
+                tags=("ac", "always-on"),
             )
         )
         result.edges.append(_power_edge("power:ac", host_id, priority=1, kind="ac"))
+        result.warn(
+            "macOS does not distinguish a UPS from a wall socket; "
+            "the mains supply is recorded as unverified"
+        )
 
     for index, entry in enumerate(batteries):
         if entry.get("absent") or entry.get("present") is False:
@@ -226,18 +233,29 @@ def _scan_linux(_ctx: ScanContext, result: ScanResult, host_id: str) -> None:
             if online is not None and not online:
                 continue
             priority = 1
+            # The same node macOS calls "power:ac", with the same meaning:
+            # mains, without a claim about where the mains comes from.
+            facts["role"] = "ac"
+            facts["source"] = "ac"
+            supply_id = "power:ac"
+            label = "AC mains"
         elif lower == "ups":
             priority = 2
+            supply_id = f"power:{slug(entry)}"
+            label = f"UPS {entry}"
         elif lower == "battery":
             priority = 3
+            supply_id = f"power:{slug(entry)}"
+            label = f"Battery {entry}"
         else:
             priority = 4
+            supply_id = f"power:{slug(entry)}"
+            label = f"{humanize_key(kind)} {entry}"
 
-        supply_id = f"power:{slug(entry)}"
         result.nodes.append(
             _supply_node(
                 supply_id=supply_id,
-                label=f"{humanize_key(kind)} {entry}",
+                label=label,
                 facts=facts,
                 telemetry=telemetry,
                 tags=(lower, "observed"),

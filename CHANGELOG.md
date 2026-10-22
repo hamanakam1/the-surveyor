@@ -181,6 +181,14 @@ All notable changes to The Surveyor. The format follows
 
 ### Fixed
 
+- **The power layer claimed more than the OS knew.** On macOS the mains
+  supply was recorded as `source: utility`, tagged `utility`, and rendered
+  as "utility" — but macOS reports only that the machine is drawing from
+  mains, and cannot say whether that is a wall socket or a UPS. The plat
+  now records what was observed ("ac") and says in a warning that macOS
+  does not distinguish the two. Linux's mains supply now uses the same node
+  id, role and label, so the two platforms agree about what `power:ac`
+  means.
 - **Two timing-sensitive tests could fail on a loaded machine.** The
   process-group kill test gave an interpreter two seconds to start, spawn a
   grandchild and write down its pid, and read the file without waiting;

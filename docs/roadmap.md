@@ -445,11 +445,20 @@ peers.
 else. A UPS is invisible; a solar array is invisible; on macOS, a laptop
 running on battery reports no AC node at all.
 
-**Work.** Linux already sees `/sys/class/power_supply`; the gap is on macOS,
-where `pmset -g batt` and IOKit are the only sources. Add `ioreg` parsing for
-UPS and for external power, and treat "AC absent" as an absent node with a
-warning rather than as "no power layer". A power layer that empties because
-the supply changed is a critical event and must be diffable.
+**Done in this release.** The power layer stopped claiming more than the
+operating system knows. macOS reports only that the machine is drawing
+from mains; it cannot say whether that is a wall socket or a UPS, and the
+old plat recorded `source: utility`, tagged `utility`, and rendered as
+"utility" — a claim the OS never made. It now records what was observed
+and says in a warning that macOS does not distinguish the two. Linux's
+mains supply now uses the same node id, role and label, so the two
+platforms agree about what `power:ac` means.
+
+**Still to do.** Linux already sees UPSes and solar controllers, because
+`/sys/class/power_supply` names them; macOS has no equivalent, and
+`ioreg` will not say. The honest end state on macOS is the one now
+reached: report mains, and report that the *kind* of mains is unknown.
+
 
 ### B8. Identity stability
 

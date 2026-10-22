@@ -119,7 +119,11 @@ def test_on_ac_makes_an_ac_supply_and_a_battery():
 
     ac = next(node for node in supplies if node.id == "power:ac")
     assert ac.facts["role"] == "ac"
-    assert "utility" in ac.tags
+    # macOS cannot say whether the mains is a wall socket or a UPS, so the
+    # plat does not claim to know.
+    assert "utility" not in ac.tags
+    assert "utility" not in ac.facts.values()
+    assert any("UPS" in note for note in result.notes)
 
     battery = next(node for node in supplies if node.id == "power:battery:internal-0")
     assert battery.facts["serial"] == "C02TEST1234"
