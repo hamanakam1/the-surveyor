@@ -145,12 +145,23 @@ def test_a_timed_out_probe_kills_the_whole_process_group(tmp_path, monkeypatch):
         f"open({str(pidfile)!r}, 'w').write(str(p.pid)); "
         "time.sleep(30)"
     )
-    probe = probe_module.run(["python3", "-c", script], timeout=2.0)
+    # A generous budget: the point of the test is the timeout, not the race.
+    # A loaded CI runner can take a while to start an interpreter at all.
+    probe = probe_module.run(["python3", "-c", script], timeout=8.0)
     assert probe.ok is False
     assert "timed out" in probe.reason
 
+    # The script writes the pid as soon as it has spawned the grandchild.
+    # If it never got that far, there is nothing to assert.
+    deadline = time.monotonic() + 5
+    while not pidfile.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if not pidfile.exists():  # pragma: no cover - a very slow host
+        pytest.skip("the probe timed out before the script started")
+
     pid = int(pidfile.read_text())
-    for _ in range(40):
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
         try:
             os.kill(pid, 0)
         except ProcessLookupError:

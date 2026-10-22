@@ -9,6 +9,8 @@ a failing test rather than as a wrong plat.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from surveyor.config import Config
 from surveyor.model import KIND_POWER_SOURCE
 from surveyor.probe import Probe
@@ -162,37 +164,48 @@ def test_every_supply_powers_the_host():
 # --------------------------------------------------------------------------
 # Linux
 # --------------------------------------------------------------------------
-SYSFS = {
-    "/sys/class/power_supply/AC/type": "Mains\n",
-    "/sys/class/power_supply/AC/online": "1\n",
-    "/sys/class/power_supply/BAT0/type": "Battery\n",
-    "/sys/class/power_supply/BAT0/capacity": "87\n",
-    "/sys/class/power_supply/BAT0/status": "Discharging\n",
-    "/sys/class/power_supply/BAT0/energy_now": "52000000\n",
-    "/sys/class/power_supply/BAT0/power_now": "12000000\n",
-    "/sys/class/power_supply/BAT0/manufacturer": "SMP\n",
-    "/sys/class/power_supply/BAT0/model_name": "BAT0\n",
-    "/sys/class/power_supply/BAT0/technology": "Li-ion\n",
-    "/sys/class/power_supply/BAT0/serial_number": "1234\n",
-    "/sys/class/power_supply/BAT0/energy_full_design": "60000000\n",
-    "/sys/class/power_supply/BAT0/cycle_count": "41\n",
-    "/sys/class/power_supply/UPS0/type": "UPS\n",
-    "/sys/class/power_supply/UPS0/online": "1\n",
-}
+def _sysfs(tmp_path) -> Path:
+    """A real directory that looks like /sys/class/power_supply.
+
+    Building it on disk rather than stubbing the reads means the scanner
+    reads real files, and the test does not have to patch ``os.listdir``
+    for the whole process.
+    """
+
+    root = tmp_path / "power_supply"
+    entries = {
+        "AC": {
+            "type": "Mains\n",
+            "online": "1\n",
+        },
+        "BAT0": {
+            "type": "Battery\n",
+            "capacity": "87\n",
+            "status": "Discharging\n",
+            "energy_now": "52000000\n",
+            "power_now": "12000000\n",
+            "manufacturer": "SMP\n",
+            "model_name": "BAT0\n",
+            "technology": "Li-ion\n",
+            "serial_number": "1234\n",
+            "energy_full_design": "60000000\n",
+            "cycle_count": "41\n",
+        },
+        "UPS0": {
+            "type": "UPS\n",
+            "online": "1\n",
+        },
+    }
+    for name, files in entries.items():
+        directory = root / name
+        directory.mkdir(parents=True)
+        for filename, content in files.items():
+            (directory / filename).write_text(content)
+    return root
 
 
-def test_linux_reads_sysfs(monkeypatch):
-    monkeypatch.setattr(scanner.os, "listdir", lambda path: ["AC", "BAT0", "UPS0"])
-    monkeypatch.setattr(
-        scanner,
-        "read_text",
-        lambda path, limit=64_000: SYSFS.get(str(path)),
-    )
-    monkeypatch.setattr(
-        scanner,
-        "read_int",
-        lambda path: int(SYSFS[str(path)]) if str(path) in SYSFS else None,
-    )
+def test_linux_reads_sysfs(tmp_path, monkeypatch):
+    monkeypatch.setattr(scanner, "_SYS_POWER", str(_sysfs(tmp_path)))
     context = ScanContext(config=Config(), site="edge", platform="linux")
     result = scanner.scan_power(context)
 
@@ -217,11 +230,8 @@ def test_linux_reads_sysfs(monkeypatch):
     assert priorities["power:bat0"] == 3
 
 
-def test_linux_without_sysfs_says_so(monkeypatch):
-    def explode(path):
-        raise OSError("no sysfs here")
-
-    monkeypatch.setattr(scanner.os, "listdir", explode)
+def test_linux_without_sysfs_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(scanner, "_SYS_POWER", str(tmp_path / "not-there"))
     context = ScanContext(config=Config(), site="edge", platform="linux")
     result = scanner.scan_power(context)
     assert not _supplies(result)

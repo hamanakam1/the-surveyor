@@ -181,6 +181,13 @@ All notable changes to The Surveyor. The format follows
 
 ### Fixed
 
+- **Two timing-sensitive tests could fail on a loaded machine.** The
+  process-group kill test gave an interpreter two seconds to start, spawn a
+  grandchild and write down its pid, and read the file without waiting;
+  and the power scanner's Linux test patched `os.listdir` for the whole
+  process rather than pointing the scanner at a directory on disk. The
+  budget is now generous, the file is waited for, and the scanner reads
+  real files.
 - **Two scanners disagreeing about a fact was silent.** The compiler kept
   the first observation and dropped the second without a word, and silence
   reads as agreement. The disagreement is now recorded in
