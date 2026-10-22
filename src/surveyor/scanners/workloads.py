@@ -30,7 +30,7 @@ from ..model import (
     Edge,
     Node,
 )
-from ..probe import Probe, ProbeLog, run
+from ..probe import ProbeLog, run
 from ..util import human_bytes, slug, to_int
 from .base import ScanContext, ScanResult, register
 
