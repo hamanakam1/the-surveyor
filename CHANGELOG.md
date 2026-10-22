@@ -220,6 +220,13 @@ All notable changes to The Surveyor. The format follows
 
 ### Fixed
 
+- **The daemon died on a bad cycle.** The architecture note promised that
+  "a daemon never dies on a bad cycle", and it did: an exception anywhere in
+  a cycle propagated out of the loop and stopped the daemon for good. A bad
+  cycle is now recorded and the loop goes round again — the whole point of
+  running on a timer is to be there when the machine comes back. A ledger
+  that cannot be written to is still fatal, because without a store there is
+  nowhere to record anything.
 - **The tool produced plats its own validator rejected.** A launchd label
   can hold capitals (`com.apple.AdobeDesktopService`) and a systemd unit can
   hold escapes (`dev-disk-by\x2duuid-…`), and the scheduled-service scanner

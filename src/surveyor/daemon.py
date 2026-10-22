@@ -131,71 +131,95 @@ def run_daemon(
         else:
             emit(human)
 
+    def one_cycle() -> None:
+        """One survey, one diff, one commit, one line of output."""
+
+        cycle_started = time.perf_counter()
+        stats.cycles += 1
+        # Use the ledger's redaction key so daemon plats stay comparable
+        # with plats produced by `surveyor scan`.
+        report = survey(config, salt=(ledger.salt if config.redact else ""))
+        topology = report.topology
+        head = ledger.head()
+        previous = ledger.get(head.digest) if head else None
+        diff = diff_topologies(previous, topology)
+        commit = ledger.commit(topology)
+
+        payload: dict[str, object] = {
+            "cycle": stats.cycles,
+            "site": topology.site,
+            "nodes": len(topology.nodes),
+            "edges": len(topology.edges),
+            "fingerprint": topology.fingerprint,
+            "recorded": commit.created,
+            "structural": diff.structural,
+            "changes": len(diff.changes),
+            "duration_ms": int((time.perf_counter() - cycle_started) * 1000),
+        }
+
+        human_extra = ""
+        if commit.created:
+            stats.recorded += 1
+            if diff.structural:
+                stats.structural_changes += 1
+                output = compose_changelog(diff, topology, previous=previous, config=config)
+                path = ledger.write_change(commit.entry, output.markdown)
+                payload["changelog"] = str(path)
+                if output.warning:
+                    payload["scribe_warning"] = output.warning
+                if notifier.enabled:
+                    results = notifier.send(diff, topology)
+                    if results:
+                        payload["notified"] = [
+                            {
+                                "endpoint": item.endpoint,
+                                "ok": item.ok,
+                                "status": item.status,
+                                "error": item.error,
+                            }
+                            for item in results
+                        ]
+                        delivered = sum(1 for item in results if item.ok)
+                        if delivered:
+                            human_extra = f" · notified {delivered}/{len(results)}"
+                        else:
+                            human_extra = f" · notify failed ({results[0].error})"
+            human = (
+                f"[{time.strftime('%H:%M:%S')}] #{commit.entry.seq} {diff.headline()} "
+                f"({len(topology.nodes)} nodes, {len(topology.edges)} edges)"
+            ) + human_extra
+        else:
+            stats.unchanged += 1
+            human = f"[{time.strftime('%H:%M:%S')}] {topology.fingerprint[:15]} unchanged"
+
+        if report.failures:
+            stats.failures += len(report.failures)
+            payload["failures"] = [result.scanner for result in report.failures]
+            human += f" · {len(report.failures)} scanner failure(s)"
+        log(payload, human)
+
     try:
         while not stop_event.is_set():
-            cycle_started = time.perf_counter()
-            stats.cycles += 1
-            # Use the ledger's redaction key so daemon plats stay comparable
-            # with plats produced by `surveyor scan`.
-            report = survey(config, salt=(ledger.salt if config.redact else ""))
-            topology = report.topology
-            head = ledger.head()
-            previous = ledger.get(head.digest) if head else None
-            diff = diff_topologies(previous, topology)
-            commit = ledger.commit(topology)
-
-            payload: dict[str, object] = {
-                "cycle": stats.cycles,
-                "site": topology.site,
-                "nodes": len(topology.nodes),
-                "edges": len(topology.edges),
-                "fingerprint": topology.fingerprint,
-                "recorded": commit.created,
-                "structural": diff.structural,
-                "changes": len(diff.changes),
-                "duration_ms": int((time.perf_counter() - cycle_started) * 1000),
-            }
-
-            human_extra = ""
-            if commit.created:
-                stats.recorded += 1
-                if diff.structural:
-                    stats.structural_changes += 1
-                    output = compose_changelog(diff, topology, previous=previous, config=config)
-                    path = ledger.write_change(commit.entry, output.markdown)
-                    payload["changelog"] = str(path)
-                    if output.warning:
-                        payload["scribe_warning"] = output.warning
-                    if notifier.enabled:
-                        results = notifier.send(diff, topology)
-                        if results:
-                            payload["notified"] = [
-                                {
-                                    "endpoint": item.endpoint,
-                                    "ok": item.ok,
-                                    "status": item.status,
-                                    "error": item.error,
-                                }
-                                for item in results
-                            ]
-                            delivered = sum(1 for item in results if item.ok)
-                            if delivered:
-                                human_extra = f" · notified {delivered}/{len(results)}"
-                            else:
-                                human_extra = f" · notify failed ({results[0].error})"
-                human = (
-                    f"[{time.strftime('%H:%M:%S')}] #{commit.entry.seq} {diff.headline()} "
-                    f"({len(topology.nodes)} nodes, {len(topology.edges)} edges)"
-                ) + human_extra
-            else:
-                stats.unchanged += 1
-                human = f"[{time.strftime('%H:%M:%S')}] {topology.fingerprint[:15]} unchanged"
-
-            if report.failures:
-                stats.failures += len(report.failures)
-                payload["failures"] = [result.scanner for result in report.failures]
-                human += f" · {len(report.failures)} scanner failure(s)"
-            log(payload, human)
+            try:
+                one_cycle()
+            except StoreError:
+                # A ledger-level failure is fatal: without a store there is
+                # nowhere to record the survey, and a daemon that pretends
+                # otherwise is worse than one that stops.
+                raise
+            except Exception as exc:
+                # A bad cycle is not a bad daemon. Record it and go round
+                # again: the whole point of running on a timer is to be
+                # there when the machine comes back.
+                stats.failures += 1
+                log(
+                    {
+                        "cycle": stats.cycles,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    },
+                    f"[{time.strftime('%H:%M:%S')}] cycle failed: "
+                    f"{type(exc).__name__}: {exc}",
+                )
 
             if once or (max_cycles is not None and stats.cycles >= max_cycles):
                 break
