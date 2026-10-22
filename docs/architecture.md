@@ -159,11 +159,12 @@ survive:
 | Redaction | one plat carrying every identifier shape the scanners emit, and an assertion that none survives |
 | Schema | a conformance suite: one broken document per rule, each rejected for its own reason |
 | Ledger | real filesystem in `tmp_path`, including tamper cases |
+| Daemon | a bad cycle and an unwritable ledger, in a temp directory |
 | CLI | stubbed `survey()` and a temporary `SURVEYOR_HOME` |
 | CI | a real survey on macOS and Linux runners, validated against the schema |
 
-The suite runs in well under a second because nothing sleeps, no network is
-required, and the optional model is tested through its failure path.
+The suite needs no network and sleeps only where a timeout is the thing
+under test, so it runs in well under half a minute.
 
 Three things are checked in CI that a unit test cannot do: the whole survey
 of a real runner must be a valid plat, the committed schema must match the

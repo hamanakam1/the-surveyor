@@ -444,7 +444,7 @@ the cadence.
 
 ```bash
 python3 -m pip install -e ".[dev]"
-make test        # 247 tests, well under a second, no network
+make test        # the whole suite — no network, nothing sleeps for long
 make lint        # ruff: style and obvious mistakes
 make types       # mypy: the type annotations
 make scan        # survey this machine
