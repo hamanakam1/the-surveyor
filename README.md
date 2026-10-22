@@ -15,6 +15,11 @@
          '___'           '___'
 ```
 
+[![ci](https://github.com/hamanakam1/the-surveyor/actions/workflows/ci.yml/badge.svg)](https://github.com/hamanakam1/the-surveyor/actions/workflows/ci.yml)
+[![python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
+[![runtime deps](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **Empirical infrastructure cartography for the edge.**
 *The map is not the machine. So we survey the machine.*
 
