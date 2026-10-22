@@ -21,6 +21,7 @@ corrupt a recorded plat.
         │ scanners/             │        │ redact.py      │
         │  power    host        │        │ (optional)     │
         │  network  workloads   │        └──────┬─────────┘
+        │  services             │               │
         └────────────┬──────────┘               │
                      │                          │
               ┌──────▼──────┐                   │
@@ -44,6 +45,9 @@ corrupt a recorded plat.
                     ├──► notify.py ──► Slack / Discord / ntfy / JSON webhook
                     │
                     └──► render.py (ASCII / Markdown / Mermaid)
+
+        fleet.py composes many plats into one map; doctor.py says what this
+        machine lets the Surveyor see. Neither writes anything.
 ```
 
 ## Modules
@@ -150,10 +154,17 @@ survive:
 | Layer | How it is tested |
 | --- | --- |
 | Parsers | recorded command output, no host access |
+| Scanner output | the *complete* node and edge set, so a changed OS output cannot add or drop a node unnoticed |
 | Diff/scribe | fabricated plats, deterministic assertions |
+| Redaction | one plat carrying every identifier shape the scanners emit, and an assertion that none survives |
+| Schema | a conformance suite: one broken document per rule, each rejected for its own reason |
 | Ledger | real filesystem in `tmp_path`, including tamper cases |
 | CLI | stubbed `survey()` and a temporary `SURVEYOR_HOME` |
-| CI | real `host` scan on macOS and Linux runners |
+| CI | a real survey on macOS and Linux runners, validated against the schema |
 
 The suite runs in well under a second because nothing sleeps, no network is
 required, and the optional model is tested through its failure path.
+
+Three things are checked in CI that a unit test cannot do: the whole survey
+of a real runner must be a valid plat, the committed schema must match the
+one the model generates, and the code must pass `ruff` and `mypy`.
