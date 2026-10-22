@@ -173,9 +173,12 @@ def test_the_power_layer_is_exactly_these_nodes():
         "power:ac",
         "power:battery:internal-0",
     }
+    from surveyor.identity import host_id
+
+    host = host_id()
     assert {edge.id for edge in result.edges} == {
-        "power:ac|powers|host:mac",
-        "power:battery:internal-0|powers|host:mac",
+        f"power:ac|powers|{host}",
+        f"power:battery:internal-0|powers|{host}",
     }
 
 

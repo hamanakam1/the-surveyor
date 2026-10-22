@@ -107,5 +107,7 @@ def test_the_bare_metal_layer_is_exactly_one_node():
     """The complete set, not a sample of it."""
 
     result = _run({"df": DF})
-    assert {node.id for node in result.nodes} == {"host:mac"}
+    from surveyor.identity import host_id
+
+    assert {node.id for node in result.nodes} == {host_id()}
     assert result.edges == []
