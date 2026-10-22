@@ -142,6 +142,18 @@ Useful flags: `--redact` (publishable plats), `--no-save` (look, don't record),
 `--scanners host,network` (narrow the survey), `--json` (script it),
 `--store PATH` (put the ledger somewhere else).
 
+A modern edge box has hundreds of nodes, and most questions are about a
+part of it. `surveyor show` can cut the plat down:
+
+```bash
+surveyor show --layer workload        # one layer
+surveyor show --kind model            # one kind of node
+surveyor show --tag compose           # the things a compose file made
+```
+
+The result is a plat in its own right — valid, with its own fingerprint —
+rather than a picture of part of one.
+
 ### What each scanner sees
 
 | Scanner | Layer | What it reads |

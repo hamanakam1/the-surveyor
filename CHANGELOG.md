@@ -8,6 +8,11 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **A plat can be cut down.** `surveyor show --layer`, `--kind` and `--tag`
+  narrow a plat to the nodes that match and the edges between them. A
+  modern edge box has hundreds of nodes and most questions are about a part
+  of it. The result is a plat in its own right — valid, with its own
+  fingerprint — rather than a picture of part of one.
 - **Golden plats.** `tests/fixtures/commands/` holds a recorded command
   output per scanner and platform, and `tests/fixtures/plats/` holds the map
   each one produces — every node, every edge, every fact. It is the

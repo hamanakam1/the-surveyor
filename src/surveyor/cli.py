@@ -113,6 +113,9 @@ def build_parser() -> argparse.ArgumentParser:
     show.add_argument("ref", nargs="?", default="HEAD", help="seq, digest prefix, or file (default HEAD)")
     show.add_argument("--format", choices=("ascii", "markdown", "mermaid", "json"), default="ascii")
     show.add_argument("--output", "--out", dest="output", help="write to a file instead of stdout")
+    show.add_argument("--layer", default=None, help="only this layer (power, metal, network, workload)")
+    show.add_argument("--kind", default=None, help="only this kind of node")
+    show.add_argument("--tag", default=None, help="only nodes carrying this tag")
     show.set_defaults(handler=_cmd_show)
 
     verify = subparsers.add_parser("verify", parents=[common], help="verify ledger integrity and hash chain")
@@ -626,6 +629,15 @@ def _cmd_show(args: argparse.Namespace) -> int:
     if topology is None:
         print(f"no survey available at {args.ref}; run `surveyor scan`", file=sys.stderr)
         return EXIT_ERROR
+
+    layers = [args.layer] if args.layer else []
+    kinds = [args.kind] if args.kind else []
+    tags = [args.tag] if args.tag else []
+    if layers or kinds or tags:
+        topology = topology.subgraph(layers=layers, kinds=kinds, tags=tags)
+        if not topology.nodes:
+            print("nothing in that plat matches the filter", file=sys.stderr)
+            return EXIT_ERROR
 
     if args.format == "json":
         rendered = json.dumps(topology.to_dict(), indent=2, sort_keys=True)

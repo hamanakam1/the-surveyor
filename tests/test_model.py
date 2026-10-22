@@ -107,3 +107,33 @@ def test_counts_are_complete(topology):
     assert counts["by_layer"]["power"] == 2
     assert counts["by_kind"]["service"] == 1
     assert counts["by_relation"]["powers"] == 2
+
+
+def test_a_subgraph_keeps_only_what_was_asked_for(topology):
+    subset = topology.subgraph(layers=["network"])
+    assert set(subset.nodes) == {
+        "iface:lab:en0",
+        "network:192.168.53.0/24",
+        "device:192.168.53.1",
+    }
+    # The edge to the host went with the host, and the plat is still valid.
+    assert not subset.dangling_edges()
+    assert subset.fingerprint != topology.fingerprint
+
+
+def test_a_subgraph_can_be_filtered_by_kind(topology):
+    subset = topology.subgraph(kinds=["model"])
+    assert not subset.nodes
+
+
+def test_a_subgraph_can_be_filtered_by_tag(topology):
+    subset = topology.subgraph(tags=["published"])
+    assert set(subset.nodes) == {"service:tcp:8080"}
+    # The edge to the workload went with it.
+    assert not subset.dangling_edges()
+
+
+def test_a_subgraph_with_no_filter_is_the_whole_plat(topology):
+    subset = topology.subgraph()
+    assert set(subset.nodes) == set(topology.nodes)
+    assert len(subset.edges) == len(topology.edges)

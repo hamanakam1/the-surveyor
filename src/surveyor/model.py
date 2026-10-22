@@ -381,9 +381,49 @@ class Topology:
             self.edges = [edge for edge in self.edges if edge.id in keep]
         return dangling
 
+    # -- filtering --------------------------------------------------------
+    def subgraph(
+        self,
+        *,
+        layers: Sequence[str] = (),
+        kinds: Sequence[str] = (),
+        tags: Sequence[str] = (),
+    ) -> Topology:
+        """A plat of the nodes that match, and the edges between them.
+
+        A modern edge box has hundreds of nodes, and most questions are
+        about a part of it: the workloads, the models, the things with a
+        particular tag. The result is a plat in its own right -- valid,
+        with its own fingerprint -- rather than a picture of part of one.
+        """
+
+        wanted_layers = set(layers)
+        wanted_kinds = set(kinds)
+        wanted_tags = set(tags)
+
+        def keep(node: Node) -> bool:
+            if wanted_layers and node.layer not in wanted_layers:
+                return False
+            if wanted_kinds and node.kind not in wanted_kinds:
+                return False
+            return not wanted_tags or bool(wanted_tags.intersection(node.tags))
+
+        subset = Topology(
+            site=self.site,
+            generated_at=self.generated_at,
+            observations=dict(self.observations),
+            schema_version=self.schema_version,
+        )
+        for node in self.nodes.values():
+            if keep(node):
+                subset.add(node)
+        for edge in self.edges:
+            if edge.source in subset.nodes and edge.target in subset.nodes:
+                subset.connect(edge)
+        return subset
+
     # -- identity ---------------------------------------------------------
-    def structural_payload(self) -> dict[str, Any]:
-        return {
+    def structural_payload(self) -> dict[str, Any]:        return {
             "oet_version": self.schema_version,
             "site": self.site,
             "nodes": [
