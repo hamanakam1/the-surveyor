@@ -479,6 +479,20 @@ def _device_id(mac: str) -> str:
     return f"device:{mac.lower().replace(':', '-')}"
 
 
+def _device_address_id(address: str) -> str:
+    """A device named by its address, for one whose hardware address is unknown.
+
+    The address is normalised first: ``ipaddress`` lowercases an IPv6
+    address, and a node id is a slug.
+    """
+
+    try:
+        normalised = str(ipaddress.ip_address(address))
+    except ValueError:
+        normalised = address
+    return f"device:{normalised}"
+
+
 def _neighbours(ctx: ScanContext, log: ProbeLog) -> list[Peer]:
     """Read the system's address-resolution table.
 
@@ -640,7 +654,7 @@ def scan_network(ctx: ScanContext) -> ScanResult:
             gateway_facts = {"role": "gateway", "address": gateway, "mac": peer.mac}
             gateway_tags = ("gateway", "observed")
         else:
-            gateway_id = f"device:{gateway}"
+            gateway_id = _device_address_id(gateway)
             gateway_facts = {"role": "gateway", "address": gateway}
             gateway_tags = ("gateway", "unverified")
         result.nodes.append(
@@ -665,7 +679,7 @@ def scan_network(ctx: ScanContext) -> ScanResult:
     for route in routes:
         if route.family != "ipv6" or not route.gateway:
             continue
-        gateway_id = f"device:{route.gateway}"
+        gateway_id = _device_address_id(route.gateway)
         result.nodes.append(
             Node(
                 id=gateway_id,

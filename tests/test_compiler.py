@@ -99,22 +99,35 @@ def test_the_observations_say_which_scanners_ran():
 
 
 def test_compiling_a_big_survey_is_not_quadratic():
-    """A merge that compares every node with every other node would show here."""
+    """A merge that compares every node with every other node would show here.
+
+    The check is a ratio rather than a wall-clock budget, so it does not
+    depend on how loaded the machine is.
+    """
 
     import time
 
-    started = time.perf_counter()
-    results = []
-    for scanner in range(5):
-        nodes = [
-            Node(f"workload:scanner{scanner}:n{index}", "workload", f"n{index}")
-            for index in range(200)
-        ]
-        results.append(_result(f"scanner{scanner}", nodes))
-    topology = compile_topology(results, Config())
-    elapsed = time.perf_counter() - started
+    def compile_many(count: int) -> float:
+        results = []
+        for scanner in range(5):
+            nodes = [
+                Node(f"workload:scanner{scanner}:n{index}", "workload", f"n{index}")
+                for index in range(count // 5)
+            ]
+            results.append(_result(f"scanner{scanner}", nodes))
+        started = time.perf_counter()
+        topology = compile_topology(results, Config())
+        elapsed = time.perf_counter() - started
+        assert len(topology.nodes) == count
+        return elapsed
 
-    assert len(topology.nodes) == 1000
-    # A merge that compared every node with every other would take minutes
-    # here. Two seconds is generous for a thousand nodes on a slow runner.
-    assert elapsed < 2.0, f"compiling 1000 nodes took {elapsed:.2f}s"
+    # Warm up, so the first measurement does not carry the import cost.
+    compile_many(200)
+
+    small = compile_many(500)
+    large = compile_many(2000)
+    if small > 0.005 and large > 0.02:
+        # Four times the nodes should cost roughly four times the time, not
+        # sixteen.
+        ratio = large / small
+        assert ratio < 9, f"four times the nodes cost {ratio:.1f} times the time"
