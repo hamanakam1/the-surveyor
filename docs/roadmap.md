@@ -350,6 +350,35 @@ recreate. Distinguish *observed* devices (seen in the neighbour table) from
 not in a footnote. This is the single largest fidelity win available for a
 LAN-shaped edge.
 
+**Done in this release.** The network scanner reads the system's
+address-resolution table — `arp -an` on macOS, `ip neigh show` on Linux —
+and records the neighbours it finds as `device` nodes, with a `member_of`
+edge to the subnet they were seen on. `member_of` is a relation the model
+defined and no scanner emitted; it has found its use.
+
+A device seen on the wire is `device:f0-18-98-11-22-33` — its hardware
+address, which survives a DHCP lease moving. A device that never answered
+keeps `device:192.168.53.1` and the `unverified` tag, because its identity
+is a guess and the plat says so. The `observed` tag means the device
+answered.
+
+Two consequences worth stating:
+
+- **A gateway that answers is no longer a guess.** If the neighbour table
+  has the gateway's hardware address, the gateway node is identified by it,
+  tagged `observed`, and it is the same node as the peer that was seen on the
+  wire rather than a second, parallel device.
+- **A neighbour with no hardware address is omitted, with a warning.** An
+  address is not an identity; a node named after one churns every time a
+  lease moves, and the plat would rather say nothing than say something that
+  is about to change.
+
+**Still to do.** The neighbour table shows only what the host has recently
+talked to. It is a passive view, and a quiet host has a quiet table. The
+next step is to record which interface and subnet each peer was seen on, so
+a peer that moves between subnets shows up as a change rather than as two
+peers.
+
 ### B7. Power beyond AC and battery
 
 **Problem.** The power scanner reports AC and internal batteries, and little
@@ -380,6 +409,18 @@ nothing durable exists. Make subnet ids include the interface when two
 interfaces share a prefix, or make the merge rule "union of facts" instead of
 "first writer wins". Resolve `slug()` collisions with a short hash suffix
 rather than a truncation.
+
+**Done in this release.** The gateway and peer identity rules are above. The
+slug truncation now carries a short digest of the original, so two long
+names that share a prefix stay distinct, and the digest is stable so ids do
+not churn between surveys.
+
+**Still to do.** The subnet collision is benign in practice — two interfaces
+in the same `/24` produce identical subnet facts, and the merge keeps the
+first — but the *rule* is wrong: the first writer wins, and if a future
+scanner emits a per-interface subnet fact, the second interface's fact will
+be lost silently. The merge rule should become "union of facts", with a
+recorded conflict when two scanners disagree about the same key.
 
 ### B9. Sockets, in full
 

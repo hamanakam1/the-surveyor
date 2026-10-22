@@ -41,11 +41,25 @@ def short_digest(digest: str, length: int = 12) -> str:
     return body[:length]
 
 
-def slug(text: str, *, fallback: str = "unnamed") -> str:
-    """Lowercase, dash-separated identifier fragment."""
+def slug(text: str, *, fallback: str = "unnamed", limit: int = 80) -> str:
+    """Lowercase, dash-separated identifier fragment.
 
-    cleaned = _SLUG_RE.sub("-", (text or "").strip().lower()).strip("-")
-    return cleaned[:80] or fallback
+    Truncation is a collision risk. Two container names that share their
+    first eighty characters -- and long names from the same vendor often do
+    -- would produce the same node id, and the second observation would
+    silently overwrite the first. A short digest of the original keeps them
+    apart, and the digest is stable, so the id does not churn between
+    surveys.
+    """
+
+    original = text or ""
+    cleaned = _SLUG_RE.sub("-", original.strip().lower()).strip("-")
+    if not cleaned:
+        return fallback
+    if len(cleaned) <= limit:
+        return cleaned
+    digest = sha256_hex(original)[:8]
+    return f"{cleaned[: max(1, limit - 9)].rstrip('-')}-{digest}"
 
 
 def human_bytes(count: int | float | None) -> str:

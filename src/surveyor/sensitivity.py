@@ -93,6 +93,12 @@ def id_name_component(node_id: str) -> str:
         return parts[1]
     if node_id.startswith("workload:") and len(parts) >= 3:
         return parts[2]
+    if node_id.startswith("device:") and len(parts) >= 2:
+        # A device is named by its hardware address, which is an identifier
+        # in its own right. Aliasing it -- rather than masking it to its
+        # vendor prefix -- keeps the peers of one machine distinct from
+        # each other after redaction.
+        return parts[1]
     return ""
 
 

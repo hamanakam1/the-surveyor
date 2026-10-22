@@ -40,6 +40,7 @@ from .errors import ProbeError
 #: is an attack surface waiting for a reason.
 ALLOWED_PROGRAMS = frozenset(
     {
+        "arp",
         "docker",
         "ifconfig",
         "ioreg",

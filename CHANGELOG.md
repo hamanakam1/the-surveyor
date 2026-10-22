@@ -8,6 +8,17 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **Peer discovery.** The network scanner reads the system's
+  address-resolution table (`arp -an` on macOS, `ip neigh show` on Linux) and
+  records the neighbours it finds as `device` nodes on the subnet they were
+  seen on. A topology map that cannot see the LAN is a map of one machine.
+- **A device's identity is its hardware address, not its IP.** The default
+  gateway used to be `device:192.168.53.1`, so a DHCP lease renewal produced
+  a spurious "device removed, device added" diff on a machine that had not
+  changed. A device seen on the wire is now `device:f0-18-98-11-22-33`, which
+  survives the lease changing, and is tagged `observed` rather than
+  `unverified`. A device that never answered keeps its address-based id and
+  the `unverified` tag, because its identity is a guess.
 - **An executable schema** (`validation.py`): `surveyor validate` checked two
   things — that no edge dangled, and that the declared fingerprint matched.
   A document with a malformed node kind, an unknown relation, a missing
@@ -95,6 +106,12 @@ All notable changes to The Surveyor. The format follows
 
 ### Fixed
 
+- **Long names could collide into one node.** `util.slug()` truncated at
+  eighty characters with nothing to distinguish the result, so two container
+  names that shared their first eighty characters produced the same node id
+  and the second observation silently overwrote the first. The truncation now
+  carries a short digest of the original, which is stable, so ids do not
+  churn between surveys.
 - **The scribe can no longer contradict its own changelog.** A diff whose
   changes were all `notice`-level — a container, a model, a socket appearing
   — produced an empty narrative and fell through to *"Only the weather
@@ -108,6 +125,24 @@ All notable changes to The Surveyor. The format follows
   inherited no layer, so every one of them grouped into a separate heading
   that meant nothing. An edge now belongs to the layer of the node that
   initiates it.
+
+## [Unreleased]
+
+### Added
+
+- **Outbound notifications** (`notify.py`): a structural change can now reach
+  Slack, Discord, Mattermost, ntfy, or any endpoint that accepts JSON.
+  - `--notify URL` (repeatable), `--notify-on critical|warning|notice|never`,
+    and `--no-notify` to silence one run.
+  - `notify`, `notify_on`, `notify_format`, `notify_timeout` in the config;
+    `SURVEYOR_NOTIFY` and `SURVEYOR_NOTIFY_ON` in the environment.
+  - `surveyor notify` sends a test ping; `--dry-run` prints the payload
+    instead of sending it.
+  - Severity gating matches the diff ladder, so telemetry drift never pages
+    anyone. A failed delivery is reported, never raised -- a dead webhook
+    cannot stop a survey or a daemon.
+  - Webhook URLs are masked in every message, log line and error, because a
+    webhook URL is a bearer token.
 
 ## [1.0.0] — 2026-10-22
 

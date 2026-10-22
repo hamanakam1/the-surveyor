@@ -93,6 +93,26 @@ read-only view of the rest of the system. The `salt` file is created with
 owner read/write only.
 
 
+## Webhooks are credentials
+
+A webhook URL is a bearer token: anyone holding it can post to your chat. The
+Surveyor therefore masks endpoints everywhere they might be printed -- output,
+logs, error messages -- showing only the host, never the path.
+
+Prefer the environment over the config file:
+
+```bash
+export SURVEYOR_NOTIFY="https://hooks.slack.com/services/T00/B00/xxxx"
+```
+
+rather than writing the URL into `config.toml`, which is a file you will
+eventually commit. `surveyor notify --dry-run` prints the payload without
+sending anything, so you can confirm the shape without exposing the endpoint.
+
+Notifications carry the same facts as a changelog: site name, severity, the
+changed nodes, and the plat fingerprint. With `redact = true` the identifiers
+in those notifications are masked exactly as they are in the recorded plat.
+
 ## Optional local model
 
 `scribe = "ollama"` sends the diff's *facts* and the deterministic draft to the

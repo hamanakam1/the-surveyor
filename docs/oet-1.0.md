@@ -35,7 +35,7 @@ of a node.
 | --- | --- | --- | --- |
 | `power_source` | power | `power:<slug>` | `power:ac`, `power:battery:internal-0` |
 | `host` | metal | `host:<hostname-slug>` | `host:studio` |
-| `device` | network | `device:<address>` | `device:192.168.53.1` |
+| `device` | network | `device:<hardware-address>` | `device:f0-18-98-11-22-33` |
 | `network` | network | `network:<cidr>` | `network:192.168.53.0/24` |
 | `interface` | network | `iface:<host>:<ifname>` | `iface:studio:en0` |
 | `workload` | workload | `workload:<runtime>:<name>` | `workload:docker:web` |
@@ -43,7 +43,7 @@ of a node.
 | `service` | workload | `service:<proto>:<port>` | `service:tcp:8080` |
 | `volume` | workload | `volume:<name>` | `volume:pgdata` |
 
-Identity is the hard part of any topology format. Two rules keep it stable:
+Identity is the hard part of any topology format. Three rules keep it stable:
 
 1. **Prefer names over generated identifiers.** Container name, interface name,
    subnet CIDR, port number. A container recreated with the same name is the
@@ -51,6 +51,17 @@ Identity is the hard part of any topology format. Two rules keep it stable:
    the structural event an operator wants to hear about.
 2. **Never encode telemetry in an id.** No timestamps, no load averages, no
    percentages.
+3. **A device is named by its hardware address, not its IP.** An address is
+   not an identity: a DHCP lease moves and the device does not. A device
+   observed on the wire is `device:f0-18-98-11-22-33`, and that id survives
+   the lease changing. A device that was *not* observed — a default gateway
+   that never answered — is `device:192.168.53.1` and carries the tag
+   `unverified`, because its identity is a guess. `observed` means the device
+   answered.
+
+   Redaction aliases the hardware-address form of a device id rather than
+   masking it to its vendor prefix, so two peers from the same vendor do not
+   collapse into one node.
 
 ## 4. Relations
 
@@ -64,7 +75,7 @@ Identity is the hard part of any topology format. Two rules keep it stable:
 | `routes_via` | sends traffic through | `host` → `device` (gateway) |
 | `exposes` | makes reachable | `workload`/`host` → `service` |
 | `depends_on` | requires, without owning | any → any |
-| `member_of` | participates in | any → any |
+| `member_of` | participates in | device → subnet |
 
 Edges are directed, deduplicated by `(source, relation, target)`, and may carry
 `facts` (for example `{"priority": 1}` on a power edge).

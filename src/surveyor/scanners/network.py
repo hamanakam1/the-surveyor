@@ -25,6 +25,7 @@ from ..model import (
     LAYER_NETWORK,
     REL_ATTACHES_TO,
     REL_HOSTS,
+    REL_MEMBER_OF,
     REL_ROUTES_VIA,
     Edge,
     Node,
@@ -85,6 +86,45 @@ _DEFAULT_ROUTE = re.compile(
 )
 _HARDWARE_PORT = re.compile(r"Hardware Port:\s*(?P<port>.+?)\s*\nDevice:\s*(?P<device>\S+)")
 _WIFI_NETWORK = re.compile(r"Current Wi-Fi Network:\s*(?P<ssid>.+)")
+
+#: macOS ``arp -an``: "? (192.168.53.1) at f0:18:98:aa:bb:cc on en0 ifscope [ethernet]"
+_ARP_AN = re.compile(
+    r"^\?\s+\((?P<addr>\d{1,3}(?:\.\d{1,3}){3})\)\s+at\s+(?P<mac>[0-9a-f]{2}(?::[0-9a-f]{2}){5})\s+on\s+(?P<iface>\S+)",
+    re.IGNORECASE,
+)
+
+#: macOS ``arp -an`` for a neighbour that has not answered yet.
+_ARP_INCOMPLETE = re.compile(
+    r"^\?\s+\((?P<addr>\d{1,3}(?:\.\d{1,3}){3})\)\s+at\s+\(incomplete\)", re.IGNORECASE
+)
+
+#: Linux ``ip neigh show``: "192.168.53.1 dev en0 lladdr f0:18:98:aa:bb:cc REACHABLE"
+_IP_NEIGH = re.compile(
+    r"^(?P<addr>\d{1,3}(?:\.\d{1,3}){3})\s+dev\s+(?P<iface>\S+)"
+    r"(?:\s+lladdr\s+(?P<mac>[0-9a-f]{2}(?::[0-9a-f]{2}){5}))?"
+    r"(?:\s+(?P<state>[A-Z]+))?",
+    re.IGNORECASE,
+)
+
+
+@dataclass(slots=True)
+class Peer:
+    """A neighbour seen in the system's address-resolution table."""
+
+    address: str
+    mac: str = ""
+    interface: str = ""
+    state: str = ""
+
+    @property
+    def identified(self) -> bool:
+        """Whether this peer has a durable identity.
+
+        An address is not an identity: a DHCP lease moves, and the device
+        does not. A hardware address survives the move.
+        """
+
+        return bool(self.mac)
 
 
 @dataclass(slots=True)
@@ -203,6 +243,46 @@ def parse_hardware_ports(text: str) -> dict[str, str]:
     return mapping
 
 
+def parse_arp_an(text: str) -> list[Peer]:
+    """Parse macOS ``arp -an`` output."""
+
+    peers: list[Peer] = []
+    for raw in text.splitlines():
+        match = _ARP_AN.match(raw)
+        if match:
+            peers.append(
+                Peer(
+                    address=match.group("addr"),
+                    mac=match.group("mac").lower(),
+                    interface=match.group("iface"),
+                )
+            )
+            continue
+        incomplete = _ARP_INCOMPLETE.match(raw)
+        if incomplete:
+            peers.append(Peer(address=incomplete.group("addr")))
+    return peers
+
+
+def parse_ip_neigh(text: str) -> list[Peer]:
+    """Parse Linux ``ip neigh show`` output."""
+
+    peers: list[Peer] = []
+    for raw in text.splitlines():
+        match = _IP_NEIGH.match(raw)
+        if not match:
+            continue
+        peers.append(
+            Peer(
+                address=match.group("addr"),
+                mac=(match.group("mac") or "").lower(),
+                interface=match.group("iface"),
+                state=(match.group("state") or "").upper(),
+            )
+        )
+    return peers
+
+
 def classify(name: str, port_name: str = "") -> str:
     lowered = name.lower()
     port = port_name.lower()
@@ -266,6 +346,35 @@ def _collect(ctx: ScanContext, log: ProbeLog) -> tuple[list[Interface], dict[str
         return [], {}
 
 
+def _device_id(mac: str) -> str:
+    """A device's durable identity: its hardware address.
+
+    An address is not an identity. A DHCP lease moves and the device does
+    not, so a node named after its IP churns every time the lease renews.
+    """
+
+    return f"device:{mac.lower().replace(':', '-')}"
+
+
+def _neighbours(ctx: ScanContext, log: ProbeLog) -> list[Peer]:
+    """Read the system's address-resolution table.
+
+    This is the only place the Surveyor can learn that something else is on
+    the wire. It is also the only place a device's durable identity comes
+    from.
+    """
+
+    if ctx.platform == "darwin":
+        probe = log.add(run(["arp", "-an"], timeout=ctx.timeout))
+        return parse_arp_an(probe.stdout) if probe.ok else []
+
+    if ctx.platform.startswith("linux"):
+        probe = log.add(run(["ip", "neigh", "show"], timeout=ctx.timeout))
+        return parse_ip_neigh(probe.stdout) if probe.ok else []
+
+    return []
+
+
 def _wifi_ssid(ctx: ScanContext, device: str, log: ProbeLog) -> str:
     if ctx.platform != "darwin" or not device:
         return ""
@@ -279,7 +388,7 @@ def _wifi_ssid(ctx: ScanContext, device: str, log: ProbeLog) -> str:
 @register(
     "network",
     LAYER_NETWORK,
-    "Interfaces, IPv4 subnets, and the default gateway of the surveyed host",
+    "Interfaces, IPv4 subnets, the default gateway, and neighbours on the wire",
 )
 def scan_network(ctx: ScanContext) -> ScanResult:
     result = ScanResult(scanner="network", layer=LAYER_NETWORK)
@@ -293,6 +402,7 @@ def scan_network(ctx: ScanContext) -> ScanResult:
         return result
 
     omitted = 0
+    subnets: list[tuple[Any, str]] = []
     for iface in interfaces:
         iface.kind = classify(iface.name, ports.get(iface.name, ""))
         if iface.kind == "loopback" and not ctx.config.include_loopback:
@@ -354,21 +464,80 @@ def scan_network(ctx: ScanContext) -> ScanResult:
                 )
             )
             result.edges.append(Edge(node_id, REL_ATTACHES_TO, network_id, {"address": address}))
+            subnets.append((network, network_id))
+
+    peers = _neighbours(ctx, log)
+    own_macs = {iface.mac.lower() for iface in interfaces if iface.mac}
+    own_addresses = {address for iface in interfaces for address, _ in iface.ipv4}
 
     if gateway:
-        gateway_id = f"device:{gateway}"
+        peer = next((item for item in peers if item.address == gateway), None)
+        if peer is not None and peer.identified:
+            # The gateway was seen on the wire, so it has a durable identity
+            # and it is no longer a guess.
+            gateway_id = _device_id(peer.mac)
+            gateway_facts = {"role": "gateway", "address": gateway, "mac": peer.mac}
+            gateway_tags = ("gateway", "observed")
+        else:
+            gateway_id = f"device:{gateway}"
+            gateway_facts = {"role": "gateway", "address": gateway}
+            gateway_tags = ("gateway", "unverified")
         result.nodes.append(
             Node(
                 id=gateway_id,
                 kind=KIND_DEVICE,
                 label=f"gateway {gateway}",
-                facts={"role": "gateway", "address": gateway},
-                tags=("gateway", "unverified"),
+                facts=gateway_facts,
+                tags=gateway_tags,
                 source="network",
             )
         )
         result.edges.append(Edge(host, REL_ROUTES_VIA, gateway_id, {"role": "default"}))
 
+    unidentified = 0
+    for peer in peers:
+        if peer.address == gateway:
+            continue
+        if peer.address in own_addresses:
+            continue
+        if not peer.identified:
+            # No hardware address means no durable identity, and a node whose
+            # id is its address churns every time a lease moves.
+            unidentified += 1
+            continue
+        if peer.mac in own_macs:
+            continue
+        node_id = _device_id(peer.mac)
+        facts: dict[str, Any] = {"address": peer.address, "mac": peer.mac}
+        if peer.interface:
+            facts["interface"] = peer.interface
+        result.nodes.append(
+            Node(
+                id=node_id,
+                kind=KIND_DEVICE,
+                label=peer.address,
+                facts=facts,
+                telemetry={"state": peer.state} if peer.state else {},
+                tags=("peer", "observed"),
+                source="network",
+            )
+        )
+        subnet_id = ""
+        for network, candidate in subnets:
+            try:
+                if ipaddress.ip_address(peer.address) in network:
+                    subnet_id = candidate
+                    break
+            except ValueError:
+                continue
+        if subnet_id:
+            result.edges.append(Edge(node_id, REL_MEMBER_OF, subnet_id, {"address": peer.address}))
+
+    if unidentified:
+        result.warn(
+            f"{unidentified} neighbour(s) without a hardware address omitted; "
+            "an address is not an identity"
+        )
     if omitted:
         result.warn(f"{omitted} interface(s) without an IPv4 address omitted from the plat")
     for note in log.notes():

@@ -98,6 +98,7 @@ surveyor scan
 | `surveyor log` | List recorded surveys. |
 | `surveyor verify` | Recompute the hash chain and every object digest. |
 | `surveyor daemon` | Survey every `interval` seconds; one entry per real change. |
+| `surveyor notify` | Send a test notification to the configured webhooks. |
 | `surveyor validate FILE` | Check an OET document against the schema rules. |
 | `surveyor redact FILE` | Mask a plat's identifiers; `--audit` reports what survived. |
 | `surveyor scanners` | List available scanners. |
@@ -165,6 +166,45 @@ can say what moved.
 Every pixel is generated from live output by
 [`scripts/make_screenshots.py`](scripts/make_screenshots.py) — `make screenshots`
 regenerates the set. Nothing in it is hand-drawn.
+
+### Get told when it moves
+
+A survey nobody reads is a survey nobody runs. Point The Surveyor at a webhook
+and it will speak up when the map changes -- and stay quiet when it does not.
+
+```bash
+# one-off, straight from the shell
+surveyor scan --notify https://hooks.slack.com/services/T00/B00/xxxx
+
+# or in the config, where it belongs
+surveyor daemon --notify-on critical
+```
+
+```toml
+notify = ["https://hooks.slack.com/services/T00/B00/xxxx"]
+notify_on = "warning"     # critical | warning | notice | never
+notify_format = "text"     # text | markdown
+```
+
+```bash
+# webhook URLs are secrets: keep them out of the config file
+export SURVEYOR_NOTIFY="https://hooks.slack.com/services/T00/B00/xxxx"
+
+# is the wiring right? ask for a test ping without surveying anything
+surveyor notify
+surveyor notify --dry-run      # print the payload instead of sending it
+```
+
+Slack, Discord, Mattermost and ntfy are recognised automatically and get the
+shape they expect; anything else receives a documented JSON document with the
+site, severity, headline, fingerprint and the changed nodes. Endpoints are
+masked everywhere they might be printed -- a webhook URL *is* a credential --
+and a failed delivery is reported, never raised: a dead webhook cannot stop a
+survey or a daemon.
+
+The gate is the same severity ladder the diff uses. `notice` would fire on the
+very first plat, `critical` only when a host or a power feed disappears, and
+`never` switches notifications off while leaving the rest of the tool alone.
 
 ## Why it is built this way
 

@@ -205,6 +205,36 @@ def test_redaction_aliases_listener_processes():
     assert "ControlCe" not in document
 
 
+def test_redaction_aliases_a_device_id_so_peers_stay_distinct():
+    """Two peers of one vendor must not collapse into one node after redaction."""
+
+    survey = Topology(site="x")
+    survey.add(
+        Node(
+            "device:f0-18-98-11-22-33",
+            "device",
+            "192.168.53.17",
+            facts={"address": "192.168.53.17", "mac": "f0:18:98:11:22:33"},
+            source="network",
+        )
+    )
+    survey.add(
+        Node(
+            "device:f0-18-98-44-55-66",
+            "device",
+            "192.168.53.18",
+            facts={"address": "192.168.53.18", "mac": "f0:18:98:44:55:66"},
+            source="network",
+        )
+    )
+    redacted = redact_topology(survey, salt="k")
+    identifiers = set(redacted.nodes)
+    assert len(identifiers) == 2, "the peers collapsed into one node"
+    document = str(redacted.to_dict())
+    assert "f0:18:98:11:22:33" not in document
+    assert "f0-18-98-11-22-33" not in document
+
+
 def test_redaction_preserves_hardware_model():
     """The class of machine is shape, not identity."""
 

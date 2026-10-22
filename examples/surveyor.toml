@@ -38,6 +38,15 @@ llm_timeout = 30.0
 # "ollama" lets the local model rewrite the opening paragraph; facts stay fixed.
 scribe = "template"
 
+# Outbound notifications. Endpoints are webhooks; Slack, Discord, Mattermost
+# and ntfy are detected automatically. Prefer the SURVEYOR_NOTIFY environment
+# variable for real secrets -- a webhook URL is a bearer token.
+# notify = ["https://hooks.slack.com/services/T00/B00/xxxx"]
+# Severity gate: critical | warning | notice | never
+notify_on = "warning"
+notify_format = "text"
+notify_timeout = 10.0
+
 # Daemon cadence in seconds.
 interval = 300
 

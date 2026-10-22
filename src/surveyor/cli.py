@@ -21,6 +21,7 @@ from .daemon import format_daemon_start, run_daemon
 from .differ import diff_topologies, render_text
 from .errors import SchemaError, StoreError, SurveyorError
 from .model import LAYERS, Topology
+from .notify import Notifier, mask_url, sample_payload
 from .render import ascii_map, markdown_table, mermaid
 from .scanners.base import registry
 from .scribe import compose_changelog
@@ -73,6 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--ascii", action="store_true", help="print the layered ASCII map")
     scan.add_argument("--json", action="store_true", help="machine-readable summary")
     scan.add_argument("--quiet", action="store_true", help="only print the outcome")
+    scan.add_argument("--notify", action="append", metavar="URL",
+                      help="webhook to notify on a structural change (repeatable)")
+    scan.add_argument("--notify-on", choices=("critical", "warning", "notice", "never"),
+                      help="severity threshold for notifications (default: warning)")
+    scan.add_argument("--no-notify", action="store_true", help="ignore configured webhooks")
     scan.set_defaults(handler=_cmd_scan)
 
     diff = subparsers.add_parser("diff", parents=[common], help="compare two survey plats")
@@ -104,6 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
     daemon.add_argument("--once", action="store_true", help="run a single cycle")
     daemon.add_argument("--max-cycles", type=int, default=None, help="stop after N cycles")
     daemon.add_argument("--json-lines", action="store_true", help="emit one JSON object per cycle")
+    daemon.add_argument("--notify", action="append", metavar="URL",
+                        help="webhook to notify on a structural change (repeatable)")
+    daemon.add_argument("--notify-on", choices=("critical", "warning", "notice", "never"),
+                        help="severity threshold for notifications (default: warning)")
+    daemon.add_argument("--no-notify", action="store_true", help="ignore configured webhooks")
     daemon.set_defaults(handler=_cmd_daemon)
 
     scanners = subparsers.add_parser("scanners", help="list available scanners")
@@ -129,6 +140,15 @@ def build_parser() -> argparse.ArgumentParser:
     redact.add_argument("--json", action="store_true")
     redact.set_defaults(handler=_cmd_redact)
 
+    ping = subparsers.add_parser("notify", parents=[common],
+                                  help="send a test notification to the configured webhooks")
+    ping.add_argument("--notify", action="append", metavar="URL", help="webhook to test (repeatable)")
+    ping.add_argument("--notify-on", choices=("critical", "warning", "notice", "never"))
+    ping.add_argument("--no-notify", action="store_true", help="ignore configured webhooks")
+    ping.add_argument("--dry-run", action="store_true", help="print the payload instead of sending it")
+    ping.add_argument("--json", action="store_true")
+    ping.set_defaults(handler=_cmd_notify)
+
     art = subparsers.add_parser("banner", help="print the banner")
     art.set_defaults(handler=_cmd_banner)
 
@@ -151,6 +171,12 @@ def _config(args: argparse.Namespace) -> Config:
         )
     if hasattr(args, "redact"):
         overrides["redact"] = bool(args.redact)
+    if getattr(args, "notify", None):
+        overrides["notify"] = tuple(args.notify)
+    if getattr(args, "notify_on", None):
+        overrides["notify_on"] = args.notify_on
+    if getattr(args, "no_notify", False):
+        overrides["notify"] = ()
     return config.with_overrides(**overrides)
 
 
@@ -214,6 +240,12 @@ def _parse_ref(ref: str, ledger: Ledger) -> tuple[Topology | None, str]:
         raise StoreError(f"{ref!r} is ambiguous ({len(matches)} surveys match); use more characters")
     entry = matches[0]
     return ledger.get(entry.digest), f"#{entry.seq}"
+
+
+def _count(number: int, noun: str) -> str:
+    """``1 node`` reads better than ``1 nodes``."""
+
+    return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
 
 
 def _emit_json(payload: Any) -> None:
@@ -313,6 +345,16 @@ def _cmd_scan(args: argparse.Namespace) -> int:
             output = compose_changelog(diff, topology, previous=previous, config=config)
             changelog_path = ledger.write_change(commit.entry, output.markdown)
 
+    notifications = []
+    if config.notify and diff.structural:
+        notifier = Notifier(
+            config.notify,
+            timeout=config.notify_timeout,
+            format=config.notify_format,
+            on=config.notify_on,
+        )
+        notifications = notifier.send(diff, topology)
+
     if args.output:
         document = json.dumps(topology.to_dict(), indent=2, sort_keys=True)
         _write_text(Path(args.output).expanduser(), document)
@@ -337,6 +379,10 @@ def _cmd_scan(args: argparse.Namespace) -> int:
                 "seq": commit.entry.seq if commit else None,
                 "unchanged": bool(commit and commit.unchanged),
                 "changelog": str(changelog_path) if changelog_path else None,
+                "notified": [
+                    {"endpoint": item.endpoint, "ok": item.ok, "status": item.status, "error": item.error}
+                    for item in notifications
+                ],
                 "output": str(args.output) if args.output else None,
             }
         )
@@ -345,7 +391,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     if not args.quiet:
         print()
     print(
-        f"◈ {counts['nodes']} nodes · {counts['edges']} edges · "
+        f"◈ {_count(counts['nodes'], 'node')} · {_count(counts['edges'], 'edge')} · "
         f"{len([layer for layer in LAYERS if topology.nodes_in_layer(layer)])}/4 layers"
     )
     print(f"  fingerprint {topology.fingerprint}")
@@ -363,6 +409,11 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     if changelog_path:
         print()
         print(f"  changelog {changelog_path}")
+    for item in notifications:
+        if item.ok:
+            print(f"  notified {item.endpoint} ({item.status})")
+        else:
+            print(f"  notification failed {item.endpoint}: {item.error}", file=sys.stderr)
     return EXIT_OK
 
 
@@ -536,6 +587,53 @@ def _cmd_redact(args: argparse.Namespace) -> int:
     if args.output:
         print(f"wrote {args.output}")
     return EXIT_OK
+
+
+def _cmd_notify(args: argparse.Namespace) -> int:
+    config = _config(args)
+    if not config.notify:
+        message = "no webhook configured: set notify = [...] in the config, pass --notify URL, "
+        message += "or export SURVEYOR_NOTIFY"
+        print(f"surveyor: {message}", file=sys.stderr)
+        return EXIT_ERROR
+
+    notifier = Notifier(
+        config.notify,
+        timeout=config.notify_timeout,
+        format=config.notify_format,
+        on=config.notify_on,
+        dry_run=bool(args.dry_run),
+    )
+
+    if args.dry_run:
+        payloads = {mask_url(url): sample_payload(url) for url in config.notify}
+        if args.json:
+            _emit_json(payloads)
+        else:
+            print(json.dumps(payloads, indent=2))
+        return EXIT_OK
+
+    results = notifier.ping()
+    if args.json:
+        _emit_json(
+            [
+                {
+                    "endpoint": result.endpoint,
+                    "ok": result.ok,
+                    "status": result.status,
+                    "error": result.error,
+                    "attempts": result.attempts,
+                }
+                for result in results
+            ]
+        )
+    else:
+        for result in results:
+            if result.ok:
+                print(f"✓ {result.endpoint} delivered ({result.status})")
+            else:
+                print(f"✗ {result.endpoint} failed: {result.error}", file=sys.stderr)
+    return EXIT_OK if all(result.ok for result in results) else EXIT_ERROR
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:

@@ -66,6 +66,27 @@ def test_the_committed_corpus_matches_the_generator():
         assert committed == build(), f"{name} does not match the generator"
 
 
+def test_the_committed_schema_matches_the_generator():
+    """The schema is generated from the model, so it cannot drift away.
+
+    This guard lives here rather than in the documentation tests because it
+    is a statement about the contract, not about the prose.
+    """
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "make_schema", ROOT / "scripts" / "make_schema.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    committed = (ROOT / "schema" / "oet-1.0.schema.json").read_text(encoding="utf-8")
+    assert committed == module.render(), (
+        "schema/oet-1.0.schema.json is stale; run `make schema`"
+    )
+
+
 def test_a_good_plat_has_no_problems(topology):
     document = topology.to_dict()
     assert validate_document(document) == []

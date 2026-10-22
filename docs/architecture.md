@@ -41,6 +41,8 @@ corrupt a recorded plat.
                             ▼
                     scribe.py ──► changes/NNNN-<digest>.md
                     │
+                    ├──► notify.py ──► Slack / Discord / ntfy / JSON webhook
+                    │
                     └──► render.py (ASCII / Markdown / Mermaid)
 ```
 
@@ -121,6 +123,9 @@ either.
   as timed out and the survey proceeds.
 - Commits take an exclusive `flock` on the ledger's `lock` file, so two
   processes cannot interleave a HEAD read and a journal append.
+- Notifications are sent after the journal entry is written, never before, so a
+  webhook failure cannot lose a survey. Delivery failures are reported and
+  dropped; they never propagate into the survey path.
 - The daemon takes a non-blocking `flock` on `daemon.lock`; a second daemon
   exits with a clear message instead of doubling the cadence.
 

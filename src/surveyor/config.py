@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .errors import ConfigError
+from .notify import FORMATS, THRESHOLDS, mask_url
 from .util import boolish
 
 #: Scanners enabled on a bare ``surveyor scan``.
@@ -37,6 +38,10 @@ CONFIG_KEYS: frozenset[str] = frozenset(
         "llm_timeout",
         "interval",
         "log_level",
+        "notify",
+        "notify_on",
+        "notify_timeout",
+        "notify_format",
     }
 )
 
@@ -78,6 +83,10 @@ class Config:
     llm_timeout: float = 30.0
     interval: int = 300
     log_level: str = "info"
+    notify: tuple[str, ...] = ()
+    notify_on: str = "warning"
+    notify_timeout: float = 10.0
+    notify_format: str = "text"
 
     def __post_init__(self) -> None:
         self.store = Path(self.store).expanduser()
@@ -100,6 +109,21 @@ class Config:
             raise ConfigError("max_workloads must be at least 1")
         if not self.site.strip():
             raise ConfigError("site must not be blank")
+        if self.notify_on not in THRESHOLDS:
+            raise ConfigError(
+                f"notify_on must be one of {', '.join(THRESHOLDS)}; got {self.notify_on!r}"
+            )
+        if self.notify_format not in FORMATS:
+            raise ConfigError(
+                f"notify_format must be one of {', '.join(FORMATS)}; got {self.notify_format!r}"
+            )
+        if self.notify_timeout <= 0:
+            raise ConfigError("notify_timeout must be positive")
+        for endpoint in self.notify:
+            if not endpoint.lower().startswith(("http://", "https://")):
+                raise ConfigError(
+                    f"notify endpoint must be an http(s) URL: {mask_url(endpoint)}"
+                )
 
     # -- loading ----------------------------------------------------------
     @classmethod
@@ -150,6 +174,19 @@ class Config:
                 values[key] = float(value)
             elif key in {"max_workloads", "interval"}:
                 values[key] = int(value)
+            elif key == "notify":
+                if isinstance(value, str):
+                    values[key] = tuple(part.strip() for part in value.split(",") if part.strip())
+                elif isinstance(value, (list, tuple)):
+                    values[key] = tuple(str(part).strip() for part in value if str(part).strip())
+                else:
+                    raise ConfigError("notify must be a list of webhook URLs")
+            elif key == "notify_on":
+                values[key] = str(value).strip().lower()
+            elif key == "notify_format":
+                values[key] = str(value).strip().lower()
+            elif key == "notify_timeout":
+                values[key] = float(value)
             elif key in {"site", "ollama_endpoint", "ollama_model", "scribe", "log_level"}:
                 values[key] = str(value).strip()
             else:  # pragma: no cover - guarded by CONFIG_KEYS
@@ -189,6 +226,9 @@ class Config:
             "SURVEYOR_OLLAMA_ENDPOINT": ("ollama_endpoint", str),
             "SURVEYOR_OLLAMA_MODEL": ("ollama_model", str),
             "SURVEYOR_LOG_LEVEL": ("log_level", str),
+            "SURVEYOR_NOTIFY_ON": ("notify_on", str),
+            "SURVEYOR_NOTIFY_FORMAT": ("notify_format", str),
+            "SURVEYOR_NOTIFY_TIMEOUT": ("notify_timeout", float),
         }
         for env_key, (attr, caster) in mapping.items():
             if env_key in os.environ and os.environ[env_key] != "":
@@ -196,6 +236,12 @@ class Config:
                     updates[attr] = caster(os.environ[env_key])
                 except ValueError as exc:
                     raise ConfigError(f"{env_key} is invalid: {exc}") from exc
+        if os.environ.get("SURVEYOR_NOTIFY"):
+            updates["notify"] = tuple(
+                part.strip()
+                for part in os.environ["SURVEYOR_NOTIFY"].split(",")
+                if part.strip()
+            )
         for env_key, attr in (
             ("SURVEYOR_REDACT", "redact"),
             ("SURVEYOR_INCLUDE_LOCAL_SERVICES", "include_local_services"),

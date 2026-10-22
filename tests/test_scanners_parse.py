@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from surveyor.scanners.network import (
     classify,
+    parse_arp_an,
     parse_hardware_ports,
     parse_ifconfig,
     parse_ip_addr,
+    parse_ip_neigh,
 )
 from surveyor.scanners.power import _parse_ioreg_battery, _parse_pmset_batt
 from surveyor.scanners.workloads import _bind_of, _parse_labels, _published_ports
@@ -21,6 +23,49 @@ en5: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
 \tether 00:11:22:33:44:55
 \tstatus: inactive
 """
+
+ARP_AN = """? (192.168.53.1) at f0:18:98:11:22:33 on en0 ifscope [ethernet]
+? (192.168.53.17) at 3c:22:fb:44:55:66 on en0 ifscope [ethernet]
+? (192.168.53.88) at (incomplete) on en0 ifscope [ethernet]
+"""
+
+IP_NEIGH = """192.168.53.1 dev en0 lladdr f0:18:98:11:22:33 REACHABLE
+192.168.53.17 dev en0 lladdr 3c:22:fb:44:55:66 STALE
+192.168.53.88 dev en0  FAILED
+fe80::1 dev en0 lladdr aa:bb:cc:dd:ee:ff router REACHABLE
+"""
+
+
+def test_parse_arp_an_reads_neighbours_and_their_hardware_addresses():
+    peers = parse_arp_an(ARP_AN)
+    assert len(peers) == 3
+    gateway = peers[0]
+    assert gateway.address == "192.168.53.1"
+    assert gateway.mac == "f0:18:98:11:22:33"
+    assert gateway.interface == "en0"
+    assert gateway.identified is True
+    # A neighbour that has not answered has an address but no identity.
+    assert peers[2].identified is False
+
+
+def test_parse_ip_neigh_reads_neighbours_and_their_hardware_addresses():
+    peers = parse_ip_neigh(IP_NEIGH)
+    assert len(peers) == 3
+    gateway = peers[0]
+    assert gateway.address == "192.168.53.1"
+    assert gateway.mac == "f0:18:98:11:22:33"
+    assert gateway.interface == "en0"
+    assert gateway.state == "REACHABLE"
+    assert peers[1].state == "STALE"
+    assert peers[2].identified is False
+
+
+def test_a_device_id_is_its_hardware_address_not_its_ip():
+    """An address is not an identity: a DHCP lease moves and the device does not."""
+
+    from surveyor.scanners.network import _device_id
+
+    assert _device_id("f0:18:98:11:22:33") == "device:f0-18-98-11-22-33"
 
 
 def test_parse_ifconfig_extracts_addresses_and_state():
