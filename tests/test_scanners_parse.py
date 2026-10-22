@@ -10,7 +10,13 @@ from surveyor.scanners.network import (
     parse_ip_neigh,
 )
 from surveyor.scanners.power import _parse_ioreg_battery, _parse_pmset_batt
-from surveyor.scanners.workloads import _bind_of, _parse_labels, _published_ports
+from surveyor.scanners.workloads import (
+    _bind_of,
+    _parse_labels,
+    _published_ports,
+    parse_lsof_udp,
+    parse_ss_udp,
+)
 
 DF = """Filesystem     1024-blocks      Used Available Capacity  Mounted on
 /dev/disk3s1s1   971350180  13340060  10525016    56%    /
@@ -19,6 +25,45 @@ devfs                  207       207         0   100%    /dev
 map auto_home            0         0         0   100%    /System/Volumes/Data/home
 /dev/disk4s1        634756    631956      2800   100%    /Volumes/Kiro CLI
 """
+
+
+LSOF_UDP = """COMMAND     PID            USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+rapportd    681 michaelhamanaka   19u  IPv6 0x9df37d98c999a5dc      0t0  UDP *:3722
+identitys   709 michaelhamanaka    7u  IPv4 0xce1b0aba7d4cf666      0t0  UDP *:*
+sharingd    718 michaelhamanaka   14u  IPv6 0x50860af2487a2e5      0t0  UDP *:55894
+Codex       5539 michaelhamanaka   23u  IPv4 0x3b3f4b1d477c007a      0t0  UDP 192.168.53.209:64495->160.79.104.10:443
+"""
+
+SS_UDP = """State  Recv-Q Send-Q Local Address:Port  Peer Address:Port
+UNCONN 0      0            0.0.0.0:68         0.0.0.0:*
+UNCONN 0      0          127.0.0.53:53         0.0.0.0:*
+UNCONN 0      0            0.0.0.0:5353        0.0.0.0:*
+"""
+
+
+def test_parse_lsof_udp_reads_only_the_bound_services():
+    services = parse_lsof_udp(LSOF_UDP)
+    addresses = {(command, port) for command, _, port in services}
+    assert ("rapportd", 3722) in addresses
+    assert ("sharingd", 55894) in addresses
+    # "*:*" is an ephemeral port: an outgoing client, not a service.
+    assert len(services) == 2
+    # A connected socket is a conversation, not a service.
+    assert not [item for item in services if item[2] == 64495]
+
+
+def test_parse_ss_udp_reads_the_listening_ports():
+    services = parse_ss_udp(SS_UDP)
+    ports = {port for _, _, port in services}
+    assert 53 in ports
+    assert 5353 in ports
+    assert 68 in ports
+
+
+def test_lsof_escapes_are_decoded():
+    from surveyor.scanners.workloads import _unescape_lsof
+
+    assert _unescape_lsof("Codex\\x20") == "Codex "
 
 
 def test_parse_df_reads_the_real_filesystems():

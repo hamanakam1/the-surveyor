@@ -488,9 +488,27 @@ recorded conflict when two scanners disagree about the same key.
 **Problem.** Only TCP listeners are seen. UDP endpoints, Unix domain sockets,
 and process-level services are not.
 
-**Work.** Add UDP listeners, and Unix sockets as a `service:` node with a
-filesystem-path identity. Keep the "loopback-only is not topology" rule — it
-is a good rule — but make it configurable per operator, not global.
+**Done in this release.** UDP services are recorded as `service:udp:<port>`
+nodes with an `exposes` edge, read from `lsof -nP -iUDP` on macOS and
+`ss -lun` on Linux.
+
+Two distinctions matter, and both are about not inventing services:
+
+- **A socket bound to an ephemeral port (`*:*`) is an outgoing client.** It
+  is not listening for anything and it is not topology.
+- **A *connected* UDP socket is a conversation in progress**, not a service.
+  It has a peer on the other end, and it disappears when the conversation
+  does — which would make the workload layer churn on every scan.
+
+**Still to do — and a decision, not a task.** Unix domain sockets were on
+the list, and they should probably stay off it. A Unix socket cannot leave
+the machine by definition, and the tool already applies exactly that rule
+to loopback-only TCP listeners: *a socket that cannot leave the machine is
+not part of the edge topology*. The one exception worth considering is a
+socket an operator reaches *on* purpose — `/var/run/docker.sock` is how the
+host talks to its container runtime — and that is an argument for
+recording the *interesting* named sockets, not for recording all of them.
+
 
 ### B10. OET 2.0
 

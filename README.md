@@ -118,7 +118,7 @@ Useful flags: `--redact` (publishable plats), `--no-save` (look, don't record),
 | `power` | power | AC mains, batteries, UPS and solar, where the OS reports them |
 | `host` | metal | CPU, memory, storage, thermals, board, boot mode |
 | `network` | network | interfaces, IPv4 and IPv6 subnets, the gateway, neighbours on the wire |
-| `workloads` | workload | containers, the local model server and its models, listening sockets |
+| `workloads` | workload | containers, the local model server and its models, listening TCP and UDP sockets |
 | `services` | workload | systemd units and launchd daemons |
 
 Each scanner is independently failable: if one times out or fails, the

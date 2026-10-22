@@ -275,7 +275,7 @@ def scan_listeners(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
             fields = raw.split(None, 8)
             if len(fields) < 9 or not fields[1].isdigit():
                 continue
-            command = fields[0]
+            command = _unescape_lsof(fields[0])
             name = fields[8].replace(" (LISTEN)", "").strip()
             bind, port = _bind_of(name)
             if port is None:
@@ -336,10 +336,129 @@ def scan_listeners(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
         )
 
 
+#: ``lsof -nP -iUDP``: "rapportd 681 user 19u IPv6 0x... 0t0 UDP *:3722"
+_LSOF_UDP = re.compile(
+    r"^(?P<command>\S+)\s+(?P<pid>\d+)\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+UDP\s+(?P<endpoint>\S+)\s*$"
+)
+
+#: ``ss -lun``: "UNCONN 0 0 0.0.0.0:68 0.0.0.0:*"
+_SS_UDP = re.compile(
+    r"^(?P<state>\S+)\s+(?P<recv>\d+)\s+(?P<send>\d+)\s+(?P<local>\S+)\s+(?P<peer>\S+)"
+)
+
+
+#: lsof escapes unusual characters in the command column as ``\xNN``.
+_LSOF_ESCAPE = re.compile(r"\\x([0-9a-fA-F]{2})")
+
+
+def _unescape_lsof(text: str) -> str:
+    """Decode lsof's ``\\xNN`` escapes in a command name."""
+
+    return _LSOF_ESCAPE.sub(lambda match: chr(int(match.group(1), 16)), text)
+
+
+def parse_lsof_udp(text: str) -> list[tuple[str, str, int]]:
+    """Parse ``lsof -nP -iUDP`` into (command, bind, port).
+
+    Only sockets that are *bound* to a port count. A connected UDP socket
+    is a conversation in progress, not a service, and a socket bound to an
+    ephemeral port (``*:*``) is an outgoing client.
+    """
+
+    found: list[tuple[str, str, int]] = []
+    for raw in text.splitlines():
+        match = _LSOF_UDP.match(raw.strip())
+        if not match:
+            continue
+        endpoint = match.group("endpoint")
+        if "->" in endpoint:
+            continue
+        bind, port = _bind_of(endpoint)
+        if port is None:
+            continue
+        found.append((_unescape_lsof(match.group("command")), bind, port))
+    return found
+
+
+def parse_ss_udp(text: str) -> list[tuple[str, str, int]]:
+    """Parse ``ss -lun`` into (command, bind, port)."""
+
+    found: list[tuple[str, str, int]] = []
+    for raw in text.splitlines():
+        match = _SS_UDP.match(raw.strip())
+        if not match:
+            continue
+        local = match.group("local")
+        bind, port = _bind_of(local)
+        if port is None:
+            continue
+        process = _SS_PROCESS.search(raw)
+        command = process.group("process").strip('"') if process else "unknown"
+        found.append((command, bind, port))
+    return found
+
+
+def scan_udp_listeners(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
+    """The UDP services the machine offers.
+
+    A UDP server is a service exactly as much as a TCP one is, and it was
+    invisible: a box answering DNS or discovery requests over UDP showed a
+    map with nothing listening.
+    """
+
+    entries: list[tuple[str, str, int]] = []
+    if ctx.platform == "darwin":
+        probe = log.add(run(["lsof", "-nP", "-iUDP"], timeout=min(ctx.timeout, 8.0)))
+        if probe.ok:
+            entries = parse_lsof_udp(probe.stdout)
+    elif ctx.platform.startswith("linux"):
+        probe = log.add(run(["ss", "-lun"], timeout=min(ctx.timeout, 8.0)))
+        if probe.ok:
+            entries = parse_ss_udp(probe.stdout)
+    if not entries:
+        return
+
+    services: dict[int, dict[str, Any]] = {}
+    for command, bind, port in entries:
+        record = services.setdefault(port, {"processes": set(), "binds": set()})
+        record["processes"].add(command)
+        record["binds"].add(bind)
+
+    host = local_host_id()
+    skipped_loopback = 0
+    for port in sorted(services)[: ctx.config.max_workloads]:
+        record = services[port]
+        binds = sorted(record["binds"])
+        processes = sorted(record["processes"])
+        local_only = bool(binds) and all(
+            bind in _LOOPBACK_BINDS or bind.startswith("127.") for bind in binds
+        )
+        if local_only and not ctx.config.include_local_services:
+            skipped_loopback += 1
+            continue
+        tags = ("listener", "udp", "local-only" if local_only else "exposed")
+        label = f"udp/{port} ({processes[0]})" if processes else f"udp/{port}"
+        node = _service_node(
+            port,
+            "udp",
+            label,
+            {"bind": binds, "processes": processes},
+            tags,
+        )
+        result.nodes.append(node)
+        result.edges.append(Edge(host, REL_EXPOSES, node.id, {"source": "listener"}))
+
+    if skipped_loopback:
+        result.warn(
+            f"{skipped_loopback} loopback-only UDP service(s) omitted; "
+            "set include_local_services = true to record them"
+        )
+
+
 @register(
     "workloads",
     LAYER_WORKLOAD,
-    "Docker containers, a local Ollama server with its models, and listening TCP sockets",
+    "Docker containers, a local Ollama server with its models, and listening sockets",
 )
 def scan_workloads(ctx: ScanContext) -> ScanResult:
     result = ScanResult(scanner="workloads", layer=LAYER_WORKLOAD)
@@ -347,6 +466,7 @@ def scan_workloads(ctx: ScanContext) -> ScanResult:
     scan_docker(ctx, result, log)
     scan_ollama(ctx, result, log)
     scan_listeners(ctx, result, log)
+    scan_udp_listeners(ctx, result, log)
 
     for note in log.notes():
         result.warn(note)

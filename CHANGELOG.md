@@ -8,6 +8,13 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **UDP services.** A UDP server is a service exactly as much as a TCP one
+  is, and it was invisible: a box answering discovery or DNS requests over
+  UDP showed a map with nothing listening. UDP sockets bound to a port are
+  now recorded as `service:udp:<port>` nodes with an `exposes` edge. A
+  socket bound to an ephemeral port is an outgoing client, and a *connected*
+  UDP socket is a conversation in progress — neither is a service, and
+  neither is recorded.
 - **Scheduled services.** A new `services` scanner reads systemd units
   (`systemctl list-units`) and launchd daemons (`launchctl print system`)
   and records them as `workload:` nodes the host runs. The scope is the
@@ -159,6 +166,9 @@ All notable changes to The Surveyor. The format follows
 
 ### Fixed
 
+- **lsof's escaped command names were not decoded.** lsof writes a command
+  containing a space as `Codex\x20`, and the plat carried the escape
+  sequence verbatim.
 - **A discharging battery was reported as charging.** The power parser
   tested `"charging" in detail` before `"discharging" in detail`, and
   *discharging* contains *charging* — so every battery running down the
