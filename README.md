@@ -70,6 +70,27 @@ surveyor history
 # #7 · 2026-10-22T09:14:02Z · The workload layer came online: ollama appeared on the plat.
 ```
 
+## What it looks like
+
+A survey, then the diff it produced, then the changelog the scribe wrote about
+that diff. The last two are the point: the map is only useful if something
+can say what moved.
+
+<table>
+<tr>
+  <td width="50%"><img alt="surveyor diff, classifying a structural change" src="docs/screenshots/diff.png" width="100%"><br><sub><b>diff</b> &mdash; what moved, ranked by how much it matters. Telemetry drift is counted and hidden, never structural.</sub></td>
+  <td width="50%"><img alt="surveyor log and surveyor verify, showing a hash-chained ledger" src="docs/screenshots/ledger.png" width="100%"><br><sub><b>ledger</b> &mdash; every survey is a content-addressed object in a parent-linked chain. Recompute it and you know nothing was edited.</sub></td>
+</tr>
+</table>
+
+![the scribe's changelog for a structural change](docs/screenshots/changelog.png)
+
+<sub><b>changelog</b> &mdash; the deterministic template writes the facts. A local model may rewrite the opening paragraph and nothing else.</sub>
+
+Every pixel is generated from live output by
+[`scripts/make_screenshots.py`](scripts/make_screenshots.py) — `make screenshots`
+regenerates the set. Nothing in it is hand-drawn.
+
 ## The core loop
 
 ```text
@@ -249,28 +270,7 @@ surveyor scan --quiet
 surveyor diff --exit-code    # 0 unchanged, 3 structural change, 1 error
 ```
 
-## What it looks like
-
-A survey, then the diff it produced, then the changelog the scribe wrote about
-that diff. The last two are the point: the map is only useful if something
-can say what moved.
-
-<table>
-<tr>
-  <td width="50%"><img alt="surveyor diff, classifying a structural change" src="docs/screenshots/diff.png" width="100%"><br><sub><b>diff</b> &mdash; what moved, ranked by how much it matters. Telemetry drift is counted and hidden, never structural.</sub></td>
-  <td width="50%"><img alt="surveyor log and surveyor verify, showing a hash-chained ledger" src="docs/screenshots/ledger.png" width="100%"><br><sub><b>ledger</b> &mdash; every survey is a content-addressed object in a parent-linked chain. Recompute it and you know nothing was edited.</sub></td>
-</tr>
-</table>
-
-![the scribe's changelog for a structural change](docs/screenshots/changelog.png)
-
-<sub><b>changelog</b> &mdash; the deterministic template writes the facts. A local model may rewrite the opening paragraph and nothing else.</sub>
-
-Every pixel is generated from live output by
-[`scripts/make_screenshots.py`](scripts/make_screenshots.py) — `make screenshots`
-regenerates the set. Nothing in it is hand-drawn.
-
-### Get told when it moves
+## Get told when it moves
 
 A survey nobody reads is a survey nobody runs. Point The Surveyor at a webhook
 and it will speak up when the map changes -- and stay quiet when it does not.
