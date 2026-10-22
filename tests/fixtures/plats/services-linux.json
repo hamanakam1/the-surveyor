@@ -1,0 +1,87 @@
+{
+  "edges": [
+    {
+      "relation": "runs",
+      "source": "host:mac",
+      "target": "workload:systemd:cron-service"
+    },
+    {
+      "relation": "runs",
+      "source": "host:mac",
+      "target": "workload:systemd:docker-service"
+    },
+    {
+      "relation": "runs",
+      "source": "host:mac",
+      "target": "workload:systemd:nginx-service"
+    },
+    {
+      "relation": "runs",
+      "source": "host:mac",
+      "target": "workload:systemd:sshd-service"
+    }
+  ],
+  "nodes": [
+    {
+      "facts": {
+        "description": "Regular background program processing daemon",
+        "runtime": "systemd",
+        "unit": "cron.service"
+      },
+      "id": "workload:systemd:cron-service",
+      "kind": "workload",
+      "label": "cron.service",
+      "tags": [
+        "service",
+        "systemd"
+      ]
+    },
+    {
+      "facts": {
+        "description": "Docker Application Container Engine",
+        "runtime": "systemd",
+        "unit": "docker.service"
+      },
+      "id": "workload:systemd:docker-service",
+      "kind": "workload",
+      "label": "docker.service",
+      "tags": [
+        "service",
+        "systemd"
+      ]
+    },
+    {
+      "facts": {
+        "description": "A high performance web server",
+        "runtime": "systemd",
+        "unit": "nginx.service"
+      },
+      "id": "workload:systemd:nginx-service",
+      "kind": "workload",
+      "label": "nginx.service",
+      "tags": [
+        "service",
+        "systemd"
+      ]
+    },
+    {
+      "facts": {
+        "description": "OpenSSH server daemon",
+        "runtime": "systemd",
+        "unit": "sshd.service"
+      },
+      "id": "workload:systemd:sshd-service",
+      "kind": "workload",
+      "label": "sshd.service",
+      "tags": [
+        "service",
+        "systemd"
+      ]
+    }
+  ],
+  "notes": [
+    "2 unit(s) reported but not present on this machine omitted"
+  ],
+  "platform": "linux",
+  "scanner": "services"
+}

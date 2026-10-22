@@ -1,0 +1,101 @@
+{
+  "edges": [
+    {
+      "relation": "member_of",
+      "source": "device:3c-22-fb-44-55-66",
+      "target": "network:192.168.53.0/24"
+    },
+    {
+      "relation": "member_of",
+      "source": "device:f0-18-98-11-22-33",
+      "target": "network:192.168.53.0/24"
+    },
+    {
+      "relation": "hosts",
+      "source": "host:mac",
+      "target": "iface:mac:en0"
+    },
+    {
+      "relation": "routes_via",
+      "source": "host:mac",
+      "target": "device:f0-18-98-11-22-33"
+    },
+    {
+      "relation": "attaches_to",
+      "source": "iface:mac:en0",
+      "target": "network:192.168.53.0/24"
+    }
+  ],
+  "nodes": [
+    {
+      "facts": {
+        "address": "192.168.53.17",
+        "interface": "en0",
+        "mac": "3c:22:fb:44:55:66"
+      },
+      "id": "device:3c-22-fb-44-55-66",
+      "kind": "device",
+      "label": "192.168.53.17",
+      "tags": [
+        "observed",
+        "peer"
+      ]
+    },
+    {
+      "facts": {
+        "address": "192.168.53.1",
+        "mac": "f0:18:98:11:22:33",
+        "role": "gateway"
+      },
+      "id": "device:f0-18-98-11-22-33",
+      "kind": "device",
+      "label": "gateway 192.168.53.1",
+      "tags": [
+        "gateway",
+        "observed"
+      ]
+    },
+    {
+      "facts": {
+        "address": "192.168.53.209",
+        "default_route": true,
+        "ipv4": [
+          "192.168.53.209/24"
+        ],
+        "kind": "ethernet",
+        "link_state": "active",
+        "mac": "f0:18:98:aa:bb:cc",
+        "mtu": 1500,
+        "name": "en0"
+      },
+      "id": "iface:mac:en0",
+      "kind": "interface",
+      "label": "en0 (ethernet)",
+      "tags": [
+        "ethernet",
+        "primary"
+      ]
+    },
+    {
+      "facts": {
+        "cidr": "192.168.53.0/24",
+        "family": "ipv4",
+        "private": true,
+        "size": 256
+      },
+      "id": "network:192.168.53.0/24",
+      "kind": "network",
+      "label": "192.168.53.0/24",
+      "tags": [
+        "private",
+        "subnet"
+      ]
+    }
+  ],
+  "notes": [
+    "1 neighbour(s) without a hardware address omitted; an address is not an identity",
+    "networksetup -listallhardwareports: not installed"
+  ],
+  "platform": "darwin",
+  "scanner": "network"
+}

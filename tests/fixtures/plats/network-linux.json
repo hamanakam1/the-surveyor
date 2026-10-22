@@ -1,0 +1,81 @@
+{
+  "edges": [
+    {
+      "relation": "member_of",
+      "source": "device:11-22-33-44-55-66",
+      "target": "network:10.0.0.0/24"
+    },
+    {
+      "relation": "hosts",
+      "source": "host:mac",
+      "target": "iface:mac:enp0s31f6"
+    },
+    {
+      "relation": "routes_via",
+      "source": "host:mac",
+      "target": "device:11-22-33-44-55-66"
+    },
+    {
+      "relation": "attaches_to",
+      "source": "iface:mac:enp0s31f6",
+      "target": "network:10.0.0.0/24"
+    }
+  ],
+  "nodes": [
+    {
+      "facts": {
+        "address": "10.0.0.1",
+        "mac": "11:22:33:44:55:66",
+        "role": "gateway"
+      },
+      "id": "device:11-22-33-44-55-66",
+      "kind": "device",
+      "label": "gateway 10.0.0.1",
+      "tags": [
+        "gateway",
+        "observed"
+      ]
+    },
+    {
+      "facts": {
+        "address": "10.0.0.5",
+        "default_route": true,
+        "ipv4": [
+          "10.0.0.5/24"
+        ],
+        "kind": "ethernet",
+        "link_state": "up",
+        "mac": "aa:bb:cc:dd:ee:ff",
+        "mtu": 1500,
+        "name": "enp0s31f6"
+      },
+      "id": "iface:mac:enp0s31f6",
+      "kind": "interface",
+      "label": "enp0s31f6 (ethernet)",
+      "tags": [
+        "ethernet",
+        "primary"
+      ]
+    },
+    {
+      "facts": {
+        "cidr": "10.0.0.0/24",
+        "family": "ipv4",
+        "private": true,
+        "size": 256
+      },
+      "id": "network:10.0.0.0/24",
+      "kind": "network",
+      "label": "10.0.0.0/24",
+      "tags": [
+        "private",
+        "subnet"
+      ]
+    }
+  ],
+  "notes": [
+    "ip -6 route show default: not installed"
+  ],
+  "platform": "linux",
+  "scanner": "network"
+}

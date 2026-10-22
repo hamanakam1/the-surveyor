@@ -1,0 +1,10 @@
+{
+  "scanner": "network",
+  "platform": "linux",
+  "outputs": {
+    "ip -o addr": "2: enp0s31f6    inet 10.0.0.5/24 brd 10.0.0.255 scope global dynamic enp0s31f6\n",
+    "ip -o link": "2: enp0s31f6: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000    link/ether aa:bb:cc:dd:ee:ff brd ff:ff:ff:ff:ff:ff\n",
+    "ip route": "default via 10.0.0.1 dev enp0s31f6 proto dhcp metric 100\n",
+    "ip neigh": "10.0.0.1 dev enp0s31f6 lladdr 11:22:33:44:55:66 REACHABLE\n"
+  }
+}

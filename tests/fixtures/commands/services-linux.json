@@ -1,0 +1,7 @@
+{
+  "scanner": "services",
+  "platform": "linux",
+  "outputs": {
+    "systemctl": "  sshd.service loaded active running OpenSSH server daemon\n  nginx.service loaded active running A high performance web server\n  cron.service loaded inactive dead Regular background program processing daemon\n  ghost.service not-found inactive dead A unit the package left behind\n  masked.service masked inactive dead Somebody disabled this on purpose\n  docker.service loaded active running Docker Application Container Engine\n"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "edges": [],
+  "nodes": [
+    {
+      "facts": {
+        "arch": "arm64",
+        "boot_mode": "uefi",
+        "cpu_cores": 16,
+        "hostname": "Mac",
+        "os": "Darwin",
+        "storage_capacity_bytes": 994662584320,
+        "storage_filesystems": 2,
+        "storage_mounts": [
+          "/",
+          "/System/Volumes/Data"
+        ]
+      },
+      "id": "host:mac",
+      "kind": "host",
+      "label": "Mac",
+      "tags": [
+        "darwin",
+        "site-host"
+      ]
+    }
+  ],
+  "notes": [
+    "nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader,nounits: not installed",
+    "several filesystems share a container; sizes are reported per filesystem and are not summed",
+    "sw_vers: not installed",
+    "sysctl -n hw.memsize: not installed",
+    "sysctl -n hw.model machdep.cpu.brand_string hw.ncpu hw.physicalcpu hw.memsize: not installed",
+    "sysctl -n hw.model: not installed",
+    "sysctl -n hw.ncpu: not installed",
+    "sysctl -n hw.physicalcpu: not installed",
+    "sysctl -n kern.boottime: not installed",
+    "sysctl -n machdep.cpu.brand_string: not installed",
+    "uname -m: not installed"
+  ],
+  "platform": "darwin",
+  "scanner": "host"
+}

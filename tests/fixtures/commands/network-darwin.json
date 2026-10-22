@@ -1,0 +1,9 @@
+{
+  "scanner": "network",
+  "platform": "darwin",
+  "outputs": {
+    "ifconfig": "lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384\n\tinet 127.0.0.1 netmask 0xff000000\nen0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500\n\tether f0:18:98:aa:bb:cc\n\tinet 192.168.53.209 netmask 0xffffff00 broadcast 192.168.53.255\n\tstatus: active\n",
+    "route": "   route to: default\ndestination: default\n       mask: default\n    gateway: 192.168.53.1\n  interface: en0\n",
+    "arp": "? (192.168.53.1) at f0:18:98:11:22:33 on en0 ifscope [ethernet]\n? (192.168.53.17) at 3c:22:fb:44:55:66 on en0 ifscope [ethernet]\n? (192.168.53.88) at (incomplete) on en0 ifscope [ethernet]\n? (192.168.53.209) at f0:18:98:aa:bb:cc on en0 ifscope [ethernet]\n"
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "edges": [
+    {
+      "relation": "runs",
+      "source": "host:mac",
+      "target": "workload:launchd:com-apple-backgroundassets-managed-relay-service"
+    },
+    {
+      "relation": "runs",
+      "source": "host:mac",
+      "target": "workload:launchd:com-apple-driverkit-appleuserhiddrivers-0x1000010ca"
+    },
+    {
+      "relation": "runs",
+      "source": "host:mac",
+      "target": "workload:launchd:com-apple-lskdd"
+    },
+    {
+      "relation": "runs",
+      "source": "host:mac",
+      "target": "workload:launchd:com-apple-tmp-cleaner"
+    }
+  ],
+  "nodes": [
+    {
+      "facts": {
+        "runtime": "launchd",
+        "unit": "com.apple.backgroundassets.managed.relay.service"
+      },
+      "id": "workload:launchd:com-apple-backgroundassets-managed-relay-service",
+      "kind": "workload",
+      "label": "com.apple.backgroundassets.managed.relay.service",
+      "tags": [
+        "launchd",
+        "service"
+      ]
+    },
+    {
+      "facts": {
+        "runtime": "launchd",
+        "unit": "com.apple.driverkit.AppleUserHIDDrivers-0x1000010ca"
+      },
+      "id": "workload:launchd:com-apple-driverkit-appleuserhiddrivers-0x1000010ca",
+      "kind": "workload",
+      "label": "com.apple.driverkit.AppleUserHIDDrivers-0x1000010ca",
+      "tags": [
+        "launchd",
+        "service"
+      ]
+    },
+    {
+      "facts": {
+        "runtime": "launchd",
+        "unit": "com.apple.lskdd"
+      },
+      "id": "workload:launchd:com-apple-lskdd",
+      "kind": "workload",
+      "label": "com.apple.lskdd",
+      "tags": [
+        "launchd",
+        "service"
+      ]
+    },
+    {
+      "facts": {
+        "runtime": "launchd",
+        "unit": "com.apple.tmp_cleaner"
+      },
+      "id": "workload:launchd:com-apple-tmp-cleaner",
+      "kind": "workload",
+      "label": "com.apple.tmp_cleaner",
+      "tags": [
+        "launchd",
+        "service"
+      ]
+    }
+  ],
+  "notes": [],
+  "platform": "darwin",
+  "scanner": "services"
+}

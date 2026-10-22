@@ -22,7 +22,7 @@ are a record of decisions rather than a snapshot of intent.
 | A1 — the scribe may not contradict the record | **done** | the narrative now partitions structural changes and only reports weather when there is nothing structural |
 | A2 — redaction that is actually safe | **done** | a declared inventory of identifiers, keyed aliases, ids and edges redacted, and an audit command |
 | A3 — the schema becomes executable | **done** | the contract in code, a generated schema, and a conformance suite of one broken document per rule |
-| A4 — determinism and golden plats | **partly** | fingerprints, reorder-invariance and the complete node set of every scanner are pinned; recorded per-platform command output is not yet a golden plat file |
+| A4 — determinism and golden plats | **done** | the complete node set of every scanner is pinned, and `tests/fixtures/plats/` holds a golden plat per scanner and platform |
 | A5 — release and repository hygiene | **done** | ruff, mypy, a coverage floor, a release workflow, and a CI job that refuses a stale schema |
 | A6 — the probe boundary | **done** | absolute paths, a wider credential scrub, process-group kills, and a least-privilege allowlist |
 | B1 — IPv6, first class | **done** | addresses, prefixes, gateways, and redaction |
@@ -253,6 +253,25 @@ version, or a kernel, and nothing catches it.
 4. **CI matrix expansion**: add a pinned-latest job per OS in addition to the
    floating one, so a platform change is caught at the point it lands rather
    than by a user.
+
+**Done in this release**, in the form that turned out to be useful:
+
+- **Golden plats.** `tests/fixtures/commands/` holds a recorded command
+  output per scanner and platform; `tests/fixtures/plats/` holds the map
+  each one produces — every node, every edge, every fact. The goldens are
+  *generated* by `scripts/make_golden.py`, so regenerating one is a
+  deliberate act with a reviewable diff rather than a copy-and-paste. The
+  test proves it catches drift: changing one fact in a golden makes it
+  fail.
+- **The complete node set of every scanner is pinned.** Asserting a handful
+  of fields does not catch a parser that starts reading a field the
+  operating system has just added, or stops reading one. Each scanner now
+  has a test that says exactly which nodes and edges it produces.
+- **Fingerprint stability** is covered by the model tests: reordering nodes
+  or edges does not change the fingerprint, and changing any structural fact
+  does.
+- **CI** runs the whole matrix, and the coverage floor is a ratchet.
+
 
 ### A5. Release and repository hygiene
 

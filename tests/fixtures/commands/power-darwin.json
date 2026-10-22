@@ -1,0 +1,8 @@
+{
+  "scanner": "power",
+  "platform": "darwin",
+  "outputs": {
+    "pmset -g batt": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=23199843)\t100%; finishing charge; 0:08 remaining present: true\n",
+    "ioreg": "  | \"BatterySerialNumber\" = \"C02TEST1234\"\n  | \"DesignCapacity\" = 6249\n  | \"Temperature\" = 305\n  | \"CycleCount\" = 252\n"
+  }
+}

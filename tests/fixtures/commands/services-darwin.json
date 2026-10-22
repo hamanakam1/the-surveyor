@@ -1,0 +1,7 @@
+{
+  "scanner": "services",
+  "platform": "darwin",
+  "outputs": {
+    "launchctl": "\tservices = {\n\t\t       0      - \tcom.apple.backgroundassets.managed.relay.service\n\t\t     516      - \tcom.apple.driverkit.AppleUserHIDDrivers-0x1000010ca\n\t\t       0   (pe) \tcom.apple.lskdd\n\t\t       0      0 \tcom.apple.tmp_cleaner\n\t}\n\tendpoints = {\n\t\tcom.apple.system.coreservices.dtcd = {\n"
+  }
+}

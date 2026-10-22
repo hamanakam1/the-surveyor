@@ -1,4 +1,4 @@
-.PHONY: help test lint types scan demo verify validate sample schema conformance screenshots clean
+.PHONY: help test lint types scan demo verify validate sample schema conformance golden screenshots clean
 
 PY ?= python3
 export PYTHONPATH := src
@@ -14,6 +14,7 @@ help:
 	@echo "make sample      regenerate examples/sample.oet.json"
 	@echo "make schema      regenerate schema/oet-1.0.schema.json from the model"
 	@echo "make conformance regenerate the broken-plat corpus"
+	@echo "make golden     regenerate the golden plats under tests/fixtures"
 	@echo "make screenshots regenerate docs/screenshots/*.png (needs pillow)"
 	@echo "make clean       remove caches"
 
@@ -51,6 +52,9 @@ schema:
 
 conformance:
 	$(PY) scripts/make_conformance.py
+
+golden:
+	$(PY) scripts/make_golden.py
 
 screenshots:
 	$(PY) scripts/make_screenshots.py

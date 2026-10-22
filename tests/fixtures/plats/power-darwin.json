@@ -1,0 +1,50 @@
+{
+  "edges": [
+    {
+      "relation": "powers",
+      "source": "power:ac",
+      "target": "host:mac"
+    },
+    {
+      "relation": "powers",
+      "source": "power:battery:internal-0",
+      "target": "host:mac"
+    }
+  ],
+  "nodes": [
+    {
+      "facts": {
+        "role": "ac",
+        "source": "ac"
+      },
+      "id": "power:ac",
+      "kind": "power_source",
+      "label": "AC mains",
+      "tags": [
+        "ac",
+        "always-on"
+      ]
+    },
+    {
+      "facts": {
+        "chemistry": "li-ion",
+        "design_capacity_mah": 6249,
+        "role": "battery",
+        "serial": "C02TEST1234",
+        "source": "battery"
+      },
+      "id": "power:battery:internal-0",
+      "kind": "power_source",
+      "label": "Internal battery",
+      "tags": [
+        "battery",
+        "internal"
+      ]
+    }
+  ],
+  "notes": [
+    "macOS does not distinguish a UPS from a wall socket; the mains supply is recorded as unverified"
+  ],
+  "platform": "darwin",
+  "scanner": "power"
+}

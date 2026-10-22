@@ -323,8 +323,10 @@ want the heartbeat anyway.
 
 **Read-only means enforced.** Scanners may only execute an allowlist of
 introspection tools, as argument vectors, never through a shell, with a scrubbed
-environment (no `*_TOKEN`, `*_SECRET`, `*_PASSWORD`), empty stdin, and hard
-timeouts. Nothing in this repository writes outside its own ledger.
+environment (no `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_KEY`, `*_AUTH`), empty
+stdin, and hard timeouts. The tool writes to its own ledger and to whatever
+file the operator names — nowhere else, and never anything that changes the
+machine it surveys.
 
 **The record is verifiable.** Objects are stored as canonical JSON and named by
 their SHA-256. Journal entries form a hash chain. `surveyor verify` recomputes
