@@ -107,15 +107,37 @@ def test_secret_environment_is_scrubbed(monkeypatch):
     assert env["LC_ALL"] == "C"
 
 
+def _trusted_interpreter() -> str | None:
+    """An interpreter that lives in a directory nobody else can write to.
+
+    CI runners put their toolchain in world-writable caches, and the probe
+    deliberately refuses to run anything that resolves there. The timeout
+    test is about killing process groups, not about path trust, so it asks
+    for a trusted interpreter explicitly.
+    """
+
+    import surveyor.probe as probe_module
+
+    for candidate in ("/usr/bin/python3", "/usr/local/bin/python3", sys.executable):
+        if not candidate or not os.path.isfile(candidate) or not os.access(candidate, os.X_OK):
+            continue
+        directory = os.path.dirname(os.path.realpath(candidate))
+        if probe_module._trusted_directory(directory):
+            return candidate
+    return None
+
+
 def test_a_timed_out_probe_kills_the_whole_process_group(tmp_path, monkeypatch):
     """A probe that overruns is killed, and so is everything it spawned."""
 
     import surveyor.probe as probe_module
 
-    if probe_module.resolve("python3") is None:  # pragma: no cover - host without python3
-        pytest.skip("python3 is not on this host")
+    interpreter = _trusted_interpreter()
+    if interpreter is None:  # pragma: no cover - host without a trusted python3
+        pytest.skip("no trusted python3 on this host")
 
     monkeypatch.setattr(probe_module, "ALLOWED_PROGRAMS", frozenset({"python3"}))
+    monkeypatch.setattr(probe_module, "resolve", lambda program: interpreter)
     pidfile = tmp_path / "pid"
     script = (
         "import subprocess, sys, time; "
