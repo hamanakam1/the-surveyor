@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from surveyor.model import KINDS, LAYERS, RELATIONS, Topology
+from surveyor.model import KINDS, LAYERS, RELATIONS, Edge, Node, Topology
 from surveyor.validation import Problem, codes, validate_document, validate_topology
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -91,6 +91,46 @@ def test_a_good_plat_has_no_problems(topology):
     document = topology.to_dict()
     assert validate_document(document) == []
     assert validate_topology(topology) == []
+
+
+def test_a_redacted_plat_is_still_a_valid_plat(topology):
+    """Redaction rewrites ids; the result must still obey the format."""
+
+    from surveyor.redact import redact_topology
+
+    redacted = redact_topology(topology, salt="k")
+    assert validate_document(redacted.to_dict()) == []
+
+
+def test_a_composed_fleet_plat_is_still_a_valid_plat():
+    from surveyor.fleet import compose
+
+    first = Topology(site="a", generated_at="2026-01-01T00:00:00Z")
+    first.add(Node("host:one", "host", "one"))
+    first.add(Node("device:aa-bb-cc-dd-ee-ff", "device", "gateway"))
+    first.connect(Edge("host:one", "routes_via", "device:aa-bb-cc-dd-ee-ff", {}))
+
+    second = Topology(site="b", generated_at="2026-01-01T00:00:00Z")
+    second.add(Node("host:two", "host", "two"))
+
+    composed = compose([first, second], site="edge")
+    assert validate_document(composed.topology.to_dict()) == []
+
+
+def test_a_scheduled_service_id_is_a_slug():
+    """A launchd label can hold capitals and a systemd unit can hold escapes."""
+
+    import re
+
+    from surveyor.scanners.services import Unit
+
+    pattern = re.compile(r"^[a-z0-9_.:/@+-]+$")
+    for name in (
+        "com.apple.AdobeDesktopService",
+        "dev-disk-by\\x2duuid-1234.device",
+        "systemd-user@1000.service",
+    ):
+        assert pattern.match(Unit(name=name, runtime="launchd").id)
 
 
 def test_the_bundled_sample_is_valid():
