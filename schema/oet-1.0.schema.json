@@ -4,20 +4,32 @@
   "title": "Open Edge Topology (OET) 1.0",
   "description": "A survey plat: the observed nodes, the observed edges, and the circumstances of observation. Facts are structural; telemetry is weather.",
   "type": "object",
-  "required": ["oet_version", "site", "generated_at", "nodes", "edges"],
+  "required": [
+    "oet_version",
+    "site",
+    "generated_at",
+    "nodes",
+    "edges"
+  ],
   "additionalProperties": true,
   "properties": {
     "oet_version": {
-      "const": "1.0",
-      "description": "Schema major.minor. Consumers must reject unknown majors."
+      "pattern": "^1\\.[0-9]+$",
+      "description": "Schema major.minor. Consumers must reject an unknown major and may accept an unknown minor, so this pattern covers the whole 1.x family."
     },
     "generator": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "version": { "type": "string" }
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
       },
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": true
     },
     "site": {
@@ -38,21 +50,46 @@
     "counts": {
       "type": "object",
       "properties": {
-        "nodes": { "type": "integer", "minimum": 0 },
-        "edges": { "type": "integer", "minimum": 0 },
-        "by_layer": { "type": "object", "additionalProperties": { "type": "integer" } },
-        "by_kind": { "type": "object", "additionalProperties": { "type": "integer" } },
-        "by_relation": { "type": "object", "additionalProperties": { "type": "integer" } }
+        "nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edges": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_layer": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "by_kind": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "by_relation": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        }
       },
       "additionalProperties": false
     },
     "nodes": {
       "type": "array",
-      "items": { "$ref": "#/$defs/node" }
+      "items": {
+        "$ref": "#/$defs/node"
+      }
     },
     "edges": {
       "type": "array",
-      "items": { "$ref": "#/$defs/edge" }
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
     },
     "observations": {
       "type": "object",
@@ -62,21 +99,44 @@
   },
   "$defs": {
     "scalar": {
-      "type": ["string", "number", "boolean"]
+      "type": [
+        "string",
+        "number",
+        "boolean"
+      ]
     },
     "attributeMap": {
       "type": "object",
       "additionalProperties": {
         "oneOf": [
-          { "$ref": "#/$defs/scalar" },
-          { "type": "array", "items": { "$ref": "#/$defs/scalar" } },
-          { "type": "object", "additionalProperties": { "$ref": "#/$defs/scalar" } }
+          {
+            "$ref": "#/$defs/scalar"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/scalar"
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/scalar"
+            }
+          }
         ]
       }
     },
     "node": {
       "type": "object",
-      "required": ["id", "kind", "layer", "label", "facts", "telemetry"],
+      "required": [
+        "id",
+        "kind",
+        "layer",
+        "label",
+        "facts",
+        "telemetry"
+      ],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -86,21 +146,29 @@
         },
         "kind": {
           "enum": [
+            "device",
             "host",
-            "power_source",
             "interface",
-            "network",
-            "workload",
             "model",
+            "network",
+            "power_source",
             "service",
             "volume",
-            "device"
+            "workload"
           ]
         },
         "layer": {
-          "enum": ["power", "metal", "network", "workload"]
+          "enum": [
+            "metal",
+            "network",
+            "power",
+            "workload"
+          ]
         },
-        "label": { "type": "string", "minLength": 1 },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
         "facts": {
           "$ref": "#/$defs/attributeMap",
           "description": "Structural attributes. Changing one changes the fingerprint."
@@ -111,7 +179,9 @@
         },
         "tags": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "uniqueItems": true
         },
         "source": {
@@ -122,7 +192,12 @@
     },
     "edge": {
       "type": "object",
-      "required": ["source", "relation", "target", "facts"],
+      "required": [
+        "source",
+        "relation",
+        "target",
+        "facts"
+      ],
       "additionalProperties": false,
       "properties": {
         "source": {
@@ -131,15 +206,15 @@
         },
         "relation": {
           "enum": [
-            "powers",
-            "hosts",
-            "runs",
-            "serves",
             "attaches_to",
-            "routes_via",
-            "exposes",
             "depends_on",
-            "member_of"
+            "exposes",
+            "hosts",
+            "member_of",
+            "powers",
+            "routes_via",
+            "runs",
+            "serves"
           ]
         },
         "target": {

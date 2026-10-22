@@ -1,0 +1,45 @@
+{
+  "oet_version": "1.0",
+  "site": "conformance",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "nodes": [
+    {
+      "id": "host:lab",
+      "kind": "host",
+      "layer": "datacentre",
+      "label": "lab",
+      "facts": {
+        "cpu_cores": 4
+      },
+      "telemetry": {
+        "load_1m": 0.4
+      },
+      "tags": [],
+      "source": "host"
+    },
+    {
+      "id": "workload:docker:web",
+      "kind": "workload",
+      "layer": "workload",
+      "label": "web",
+      "facts": {
+        "runtime": "docker"
+      },
+      "telemetry": {},
+      "tags": [
+        "container"
+      ],
+      "source": "workloads"
+    }
+  ],
+  "edges": [
+    {
+      "source": "host:lab",
+      "relation": "runs",
+      "target": "workload:docker:web",
+      "facts": {
+        "runtime": "docker"
+      }
+    }
+  ]
+}

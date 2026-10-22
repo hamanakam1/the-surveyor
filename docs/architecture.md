@@ -54,9 +54,11 @@ corrupt a recorded plat.
 | `model.py` | OET objects, identity, fingerprint, canonical serialisation | no |
 | `differ.py` | severity-classified structural diff | no |
 | `redact.py` | identifier masking for publishable plats | no |
+| `sensitivity.py` | the declared inventory of what an identifier is | no |
+| `validation.py` | the OET contract, enforced in code | no |
 | `scribe.py` | deterministic changelog, optional local-model rewrite | no |
 | `render.py` | ASCII map, Markdown tables, Mermaid graph | no |
-| `store.py` | content-addressed objects, hash-chained journal | **yes** (ledger only) |
+| `store.py` | content-addressed objects, hash-chained journal, redaction key | **yes** (ledger only) |
 | `daemon.py` | schedule, instance lock, signal handling | **yes** (via store) |
 | `cli.py` | argument parsing, exit codes, output | **yes** (via store) |
 

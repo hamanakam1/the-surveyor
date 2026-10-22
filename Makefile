@@ -1,4 +1,4 @@
-.PHONY: help test scan demo verify validate sample screenshots clean
+.PHONY: help test scan demo verify validate sample schema conformance screenshots clean
 
 PY ?= python3
 export PYTHONPATH := src
@@ -10,6 +10,8 @@ help:
 	@echo "make verify      check the local ledger's hash chain"
 	@echo "make validate    validate examples/sample.oet.json"
 	@echo "make sample      regenerate examples/sample.oet.json"
+	@echo "make schema      regenerate schema/oet-1.0.schema.json from the model"
+	@echo "make conformance regenerate the broken-plat corpus"
 	@echo "make screenshots regenerate docs/screenshots/*.png (needs pillow)"
 	@echo "make clean       remove caches"
 
@@ -35,6 +37,12 @@ validate:
 
 sample:
 	$(PY) scripts/make_sample.py
+
+schema:
+	$(PY) scripts/make_schema.py
+
+conformance:
+	$(PY) scripts/make_conformance.py
 
 screenshots:
 	$(PY) scripts/make_screenshots.py

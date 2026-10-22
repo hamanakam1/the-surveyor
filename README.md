@@ -98,7 +98,7 @@ surveyor scan
 | `surveyor log` | List recorded surveys. |
 | `surveyor verify` | Recompute the hash chain and every object digest. |
 | `surveyor daemon` | Survey every `interval` seconds; one entry per real change. |
-| `surveyor validate FILE` | Check an OET document, including its fingerprint. |
+| `surveyor validate FILE` | Check an OET document against the schema rules. |
 | `surveyor redact FILE` | Mask a plat's identifiers; `--audit` reports what survived. |
 | `surveyor scanners` | List available scanners. |
 | `surveyor init` | Write a starter `config.toml`. |
@@ -236,6 +236,31 @@ relations, and an explicit split between structure and telemetry.
 Read the spec: [`docs/oet-1.0.md`](docs/oet-1.0.md) ·
 JSON Schema: [`schema/oet-1.0.schema.json`](schema/oet-1.0.schema.json) ·
 A complete plat: [`examples/sample.oet.json`](examples/sample.oet.json)
+
+### The schema is executable
+
+A schema that only humans read is a schema that eventually lies. The
+committed JSON Schema is **generated from the model** — the node kinds, the
+layers and the relations come from `surveyor.model`, and a test fails if the
+committed file is stale — and `surveyor validate` enforces it in code:
+
+```bash
+surveyor validate plat.oet.json
+# ✗ invalid · plat.oet.json
+#   - unknown-relation: edges[0].relation: unknown relation 'talks_to'
+#   - dangling-edge: edges[1].target: no node with id 'workload:ghost'
+```
+
+Every problem carries a stable code, so a CI job can react to the *kind* of
+fault rather than parse prose. The rules themselves are pinned by a
+**conformance suite**: `tests/fixtures/invalid/` holds one document per
+rule, each broken in exactly one way, and the file name says which way. If a
+rule stops being enforced, the build stops.
+
+```bash
+make schema        # regenerate the schema from the model
+make conformance   # regenerate the broken-plat corpus
+```
 
 ## Configuration
 

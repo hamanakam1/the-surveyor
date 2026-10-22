@@ -26,6 +26,7 @@ from .scanners.base import registry
 from .scribe import compose_changelog
 from .store import Ledger
 from .util import short_digest
+from .validation import Problem, validate_document
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -545,34 +546,49 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise SchemaError(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
-    topology = Topology.from_dict(data)
-    dangling = topology.dangling_edges()
-    problems = [f"dangling edge {edge.id}" for edge in dangling]
-    declared = str(data.get("fingerprint") or "")
-    if declared and declared != topology.fingerprint:
-        problems.append(
-            f"declared fingerprint {declared[:19]} does not match the document "
-            f"({topology.fingerprint[:19]})"
-        )
-    counts = topology.counts()
+
+    problems = validate_document(data)
+    counts: dict[str, Any] = {"nodes": 0, "edges": 0}
+    fingerprint = str(data.get("fingerprint") or "")
+    try:
+        topology = Topology.from_dict(data)
+    except SchemaError as exc:
+        problems.append(Problem("bad-document", "", str(exc)))
+    else:
+        counts = topology.counts()
+        if fingerprint and fingerprint != topology.fingerprint:
+            problems.append(
+                Problem(
+                    "fingerprint-mismatch",
+                    "fingerprint",
+                    f"declared {fingerprint[:19]} does not match the document "
+                    f"({topology.fingerprint[:19]})",
+                )
+            )
+        elif not fingerprint:
+            fingerprint = topology.fingerprint
+
     if args.json:
         _emit_json(
             {
                 "path": str(path),
                 "ok": not problems,
-                "oet_version": topology.schema_version,
-                "fingerprint": topology.fingerprint,
+                "oet_version": str(data.get("oet_version") or ""),
+                "fingerprint": fingerprint,
                 "counts": counts,
-                "problems": problems,
+                "problems": [problem.to_dict() for problem in problems],
             }
         )
     else:
         status = "✓ valid" if not problems else "✗ invalid"
         print(f"{status} · {path}")
-        print(f"  OET {topology.schema_version} · {topology.site} · {topology.generated_at}")
-        print(f"  {counts['nodes']} nodes · {counts['edges']} edges · fingerprint {topology.fingerprint}")
+        print(
+            f"  OET {data.get('oet_version', '')} · {data.get('site', '')} · "
+            f"{data.get('generated_at', '')}"
+        )
+        print(f"  {counts['nodes']} nodes · {counts['edges']} edges · fingerprint {fingerprint}")
         for problem in problems:
-            print(f"  - {problem}", file=sys.stderr)
+            print(f"  - {problem.code}: {problem}", file=sys.stderr)
     return EXIT_OK if not problems else EXIT_ERROR
 
 

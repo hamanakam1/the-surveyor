@@ -1,0 +1,15 @@
+{
+  "oet_version": "1.0",
+  "site": "conformance",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "edges": [
+    {
+      "source": "host:lab",
+      "relation": "runs",
+      "target": "workload:docker:web",
+      "facts": {
+        "runtime": "docker"
+      }
+    }
+  ]
+}

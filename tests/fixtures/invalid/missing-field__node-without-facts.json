@@ -1,0 +1,28 @@
+{
+  "oet_version": "1.0",
+  "site": "conformance",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "nodes": [
+    {
+      "id": "host:lab",
+      "kind": "host",
+      "layer": "metal",
+      "label": "lab",
+      "telemetry": {
+        "load_1m": 0.4
+      },
+      "tags": [],
+      "source": "host"
+    }
+  ],
+  "edges": [
+    {
+      "source": "host:lab",
+      "relation": "runs",
+      "target": "workload:docker:web",
+      "facts": {
+        "runtime": "docker"
+      }
+    }
+  ]
+}

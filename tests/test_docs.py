@@ -78,5 +78,24 @@ def test_docs_reference_the_schema_that_exists():
     assert "schema/oet-1.0.schema.json" in readme
     assert "schema/oet-1.0.schema.json" in spec
     schema = json.loads((ROOT / "schema" / "oet-1.0.schema.json").read_text())
-    assert schema["properties"]["oet_version"]["const"] == "1.0"
+    assert schema["properties"]["oet_version"]["pattern"] == r"^1\.[0-9]+$"
     assert set(schema["$defs"]["edge"]["properties"]["relation"]["enum"]) == set(RELATIONS)
+    assert set(schema["$defs"]["node"]["properties"]["kind"]["enum"]) == set(KINDS)
+    assert set(schema["$defs"]["node"]["properties"]["layer"]["enum"]) == set(LAYERS)
+
+
+def test_the_committed_schema_matches_the_generator():
+    """The schema is generated from the model, so it cannot drift away."""
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "make_schema", ROOT / "scripts" / "make_schema.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    committed = (ROOT / "schema" / "oet-1.0.schema.json").read_text(encoding="utf-8")
+    assert committed == module.render(), (
+        "schema/oet-1.0.schema.json is stale; run `make schema`"
+    )
