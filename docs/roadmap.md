@@ -589,16 +589,37 @@ OET layer model either holds up or does not.
 
 **Problem.** A fleet is a graph of graphs, and there is no way to hold one.
 
-**Work.** A fleet ledger holds plats from many hosts, keyed by site and host.
-`surveyor fleet --site shed` renders a composed map: the same OET node model,
-with edges *between* hosts where one host can see another (a neighbour
-table entry, a route, a published port). The composed map is itself a plat,
-with its own fingerprint, so a fleet diff works exactly like a host diff.
+**Done in this release.** `surveyor fleet` composes every host in the
+ledger — this one, plus every import — into a single map, rendered as
+ASCII, Markdown, Mermaid or JSON.
 
-This is the moment the OET layer model either holds up or does not. The test
-is whether "power → bare metal → network → workload" survives a cross-host
-edge, and whether a composed fingerprint is meaningful when two hosts
-contribute.
+The composition is a union by identity, and it works because identity was
+designed for it in Horizon B:
+
+- A **device** is named by its hardware address, so two hosts that both saw
+  the same router produce the *same* node, and the union of their plats
+  joins them together without anyone having to say so.
+- A **host** is named by its own name, so the hosts do not collide.
+- The **edges** survive, because each host's own relations are still true.
+
+What the composition cannot do is resolve a disagreement, and it does not
+pretend to:
+
+- Two hosts that see the same device at different addresses get a
+  **conflict** — one observation is kept and the disagreement is reported.
+- A host that has not recently spoken to its router has no hardware address
+  for it, so it names the router by its IP, and another host names it by
+  its hardware address. The ids differ, the map cannot know they are the
+  same box, and the composition reports the shared address as **possibly
+  the same device** rather than merging on a guess.
+
+**Still to do.** The composed map is a *view*, not a record: it is
+recomputed from the plats every time, and it is not itself a plat in the
+ledger with its own fingerprint and its own history. A site map that can
+be diffed — "what changed in the site since Tuesday" — needs the
+composition to be a first-class object, and that is the next thing to
+build.
+
 
 ### C3. Sites
 

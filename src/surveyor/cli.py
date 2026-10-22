@@ -168,6 +168,18 @@ def build_parser() -> argparse.ArgumentParser:
     importer.add_argument("--json", action="store_true")
     importer.set_defaults(handler=_cmd_import)
 
+    fleet = subparsers.add_parser(
+        "fleet", help="compose every host in the ledger into one map"
+    )
+    fleet.add_argument(
+        "--format",
+        choices=("ascii", "markdown", "mermaid", "json"),
+        default="ascii",
+    )
+    fleet.add_argument("--output", "--out", dest="output", help="write the map here")
+    fleet.add_argument("--json", action="store_true", help="print a summary instead")
+    fleet.set_defaults(handler=_cmd_fleet)
+
     art = subparsers.add_parser("banner", help="print the banner")
     art.set_defaults(handler=_cmd_banner)
 
@@ -740,6 +752,47 @@ def _host_of(topology: Topology) -> str:
         if node.kind == "host":
             return node.id
     return ""
+
+
+def _cmd_fleet(args: argparse.Namespace) -> int:
+    """Compose every host in the ledger into one map."""
+
+    from .fleet import compose, host_sites, summarise, tag_hosts
+
+    config = _config(args)
+    ledger = Ledger(config.store)
+    plats = ledger.fleet_plats()
+    if not plats:
+        raise StoreError(f"no surveys in {ledger.root}; run `surveyor scan` first")
+
+    sites = host_sites(plats)
+    composition = compose(plats, site=config.site)
+    tag_hosts(composition.topology, sites)
+
+    if args.json:
+        _emit_json(summarise(composition, sites))
+        return EXIT_OK
+
+    if args.format == "json":
+        rendered = json.dumps(composition.topology.to_dict(), indent=2, sort_keys=True)
+    elif args.format == "markdown":
+        rendered = markdown_table(composition.topology)
+    elif args.format == "mermaid":
+        rendered = mermaid(composition.topology)
+    else:
+        rendered = ascii_map(composition.topology, width=78)
+
+    if args.output:
+        _write_text(Path(args.output).expanduser(), rendered)
+        print(f"wrote {args.output}")
+    else:
+        print(rendered)
+
+    for conflict in composition.conflicts:
+        print(f"  ! {conflict}", file=sys.stderr)
+    for finding in composition.ambiguous:
+        print(f"  ? {finding}", file=sys.stderr)
+    return EXIT_OK
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:

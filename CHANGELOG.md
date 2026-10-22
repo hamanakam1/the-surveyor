@@ -8,6 +8,15 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **`surveyor fleet`**: compose every host in the ledger — this one, plus
+  every import — into a single map, as ASCII, Markdown, Mermaid or JSON.
+  The composition works because identity was designed for it: a device is
+  named by its hardware address, so two hosts that both saw the same router
+  produce the *same* node, and the union of their plats joins them together
+  without anyone having to say so. Where the composition cannot resolve
+  something it says so rather than guessing — a device two hosts name
+  differently is reported as possibly being the same box, and a fact two
+  plats disagree about is reported as a conflict.
 - **UDP services.** A UDP server is a service exactly as much as a TCP one
   is, and it was invisible: a box answering discovery or DNS requests over
   UDP showed a map with nothing listening. UDP sockets bound to a port are

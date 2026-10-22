@@ -103,6 +103,7 @@ surveyor scan
 | `surveyor redact FILE` | Mask a plat's identifiers; `--audit` reports what survived. |
 | `surveyor export [REF]` | Write a plat out as a document another ledger can read. |
 | `surveyor import FILE` | Record a plat that came from another host. |
+| `surveyor fleet` | Compose every host in the ledger into one map. |
 | `surveyor scanners` | List available scanners. |
 | `surveyor init` | Write a starter `config.toml`. |
 | `surveyor banner` | Print the instrument. |
@@ -172,6 +173,25 @@ disturb this host's own history: `HEAD` is still the newest survey **this**
 host took, and `HEAD~1` is the previous one, skipping whatever arrived from
 elsewhere in between. Re-importing the same plat changes nothing, exactly
 as re-surveying an unchanged machine changes nothing.
+
+### Compose a site
+
+`surveyor fleet` merges every host in the ledger — this one, plus every
+import — into a single map.
+
+```bash
+surveyor fleet                       # the composed ASCII map
+surveyor fleet --format mermaid       # a diagram GitHub renders
+surveyor fleet --json                # hosts, sites, and anything unresolved
+```
+
+The composition works because identity was designed for it: a device is
+named by its hardware address, so two hosts that both saw the same router
+produce the *same* node, and the union of their plats joins them together
+without anyone having to say so. Where the composition cannot resolve
+something, it says so rather than guessing — a device two hosts name
+differently is reported as possibly being the same box, and a fact two
+plats disagree about is reported as a conflict.
 
 
 ### Diff in CI

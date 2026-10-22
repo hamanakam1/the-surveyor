@@ -343,6 +343,21 @@ class Ledger:
                 return entry
         return None
 
+    def fleet_plats(self) -> list[Topology]:
+        """Every plat this ledger holds: this host's, and one per import.
+
+        One plat per host — the newest of each — because a site map wants
+        the current state of every box, not its history.
+        """
+
+        plats: list[Topology] = []
+        head = self.head()
+        if head is not None:
+            plats.append(self.get(head.digest))
+        for entry in self.imports():
+            plats.append(self.get(entry.digest))
+        return plats
+
     def get(self, digest: str) -> Topology:
         path = self._object_path(digest)
         if not path.exists():
