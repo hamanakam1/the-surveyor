@@ -8,6 +8,13 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **Scheduled services.** A new `services` scanner reads systemd units
+  (`systemctl list-units`) and launchd daemons (`launchctl print system`)
+  and records them as `workload:` nodes the host runs. The scope is the
+  *system* domain on macOS, deliberately: a user session lists an agent for
+  every application the operator has open, and those come and go with what
+  they are doing. Recording them would make the workload layer churn on
+  every scan, which is exactly the noise the tool exists to avoid.
 - **`surveyor export` and `surveyor import`**: a plat can cross a ledger
   boundary. A plat is a file, and a file can be shipped — which is the first
   half of the fleet story and the thing that makes the tool composable.
@@ -139,6 +146,16 @@ All notable changes to The Surveyor. The format follows
   be reversed by hashing a word list, which made the old redaction a speed
   bump rather than a protection. Aliases are now
   `sha256(salt + slug(value))` against a per-ledger secret.
+
+### Changed
+
+- **The ASCII map shows the hubs first.** A modern edge box has hundreds of
+  scheduled services and a handful of things that actually matter, and a map
+  that shows the first six alphabetically showed the reader neither. Nodes
+  are now ordered by how many relationships they take part in, so the model
+  server that serves eight models comes before the daemons that merely
+  exist, and the edge list is ordered the same way. A truncated layer also
+  says what it left out — `440 launchd · 8 model · 1 ollama · 4 service`.
 
 ### Fixed
 

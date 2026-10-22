@@ -24,7 +24,7 @@ The map is read top-down, from the wall socket to the listening socket.
 | Power | `power` | utility feeds, batteries, UPS, solar where the OS reports it |
 | Bare metal | `metal` | the surveyed host itself: CPU, memory, storage, thermals, board |
 | Network | `network` | interfaces, IPv4 and IPv6 subnets, unverified devices such as the default gateway |
-| Workloads | `workload` | containers, model servers, models, listening services, volumes |
+| Workloads | `workload` | containers, model servers, models, listening services, volumes, scheduled services |
 
 Layer is a presentation and diffing affordance. It never changes the identity
 of a node.
@@ -38,7 +38,7 @@ of a node.
 | `device` | network | `device:<hardware-address>` | `device:f0-18-98-11-22-33` |
 | `network` | network | `network:<cidr>` | `network:192.168.53.0/24` |
 | `interface` | network | `iface:<host>:<ifname>` | `iface:studio:en0` |
-| `workload` | workload | `workload:<runtime>:<name>` | `workload:docker:web` |
+| `workload` | workload | `workload:<runtime>:<name>` | `workload:docker:web`, `workload:systemd:nginx.service` |
 | `model` | workload | `model:<slug>` | `model:llama3.2:3b` |
 | `service` | workload | `service:<proto>:<port>` | `service:tcp:8080` |
 | `volume` | workload | `volume:<name>` | `volume:pgdata` |

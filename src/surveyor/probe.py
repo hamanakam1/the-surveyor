@@ -46,6 +46,7 @@ ALLOWED_PROGRAMS = frozenset(
         "ifconfig",
         "ioreg",
         "ip",
+        "launchctl",
         "lsof",
         "networksetup",
         "pmset",
@@ -54,6 +55,7 @@ ALLOWED_PROGRAMS = frozenset(
         "ss",
         "sw_vers",
         "sysctl",
+        "systemctl",
         "uname",
     }
 )

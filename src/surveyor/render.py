@@ -117,6 +117,35 @@ def _row(node: Node, box_width: int) -> str:
     return "│ " + f"{clip(left, body_width):<{body_width}}" + " │"
 
 
+def _degrees(topology: Topology) -> dict[str, int]:
+    """How many relationships each node takes part in.
+
+    In a topology map the hubs are what a reader wants to see first: the
+    model server that serves eight models matters more than the eight
+    daemons that merely exist.
+    """
+
+    degrees: dict[str, int] = dict.fromkeys(topology.nodes, 0)
+    for edge in topology.edges:
+        degrees[edge.source] = degrees.get(edge.source, 0) + 1
+        degrees[edge.target] = degrees.get(edge.target, 0) + 1
+    return degrees
+
+
+def _breakdown(nodes: list[Node]) -> str:
+    """A one-line summary of a layer's contents.
+
+    When a layer is too big to show, the reader deserves to know what is in
+    the part they cannot see.
+    """
+
+    counts: dict[str, int] = {}
+    for node in nodes:
+        key = str(node.facts.get("runtime") or node.kind)
+        counts[key] = counts.get(key, 0) + 1
+    return " · ".join(f"{count} {key}" for key, count in sorted(counts.items()))
+
+
 def ascii_map(topology: Topology, *, width: int = 78, max_per_layer: int = 6) -> str:
     """Render the survey as stacked layer boxes plus a connection summary."""
 
@@ -127,10 +156,15 @@ def ascii_map(topology: Topology, *, width: int = 78, max_per_layer: int = 6) ->
     lines.append(f"◈ {topology.site} · {topology.generated_at} · {topology.fingerprint[:15]}")
     lines.append("")
 
+    degrees = _degrees(topology)
     for index, layer in enumerate(LAYERS):
         nodes = sorted(
             topology.nodes_in_layer(layer),
-            key=lambda node: (_KIND_ORDER.get(node.kind, 9), node.label.lower()),
+            key=lambda node: (
+                -degrees.get(node.id, 0),
+                _KIND_ORDER.get(node.kind, 9),
+                node.label.lower(),
+            ),
         )
         title = f" {LAYER_LABELS[layer].upper()} "
         if not nodes:
@@ -146,6 +180,9 @@ def ascii_map(topology: Topology, *, width: int = 78, max_per_layer: int = 6) ->
         if len(nodes) > max_per_layer:
             hidden = f"… {len(nodes) - max_per_layer} more"
             lines.append("│ " + f"{hidden:<{inner - 2}}" + " │")
+            summary = _breakdown(nodes)
+            if summary:
+                lines.append("│ " + f"{clip(summary, inner - 2):<{inner - 2}}" + " │")
         lines.append("╰" + "─" * inner + "╯")
         if index < len(LAYERS) - 1:
             lines.append(" " * 12 + "│")
@@ -153,17 +190,18 @@ def ascii_map(topology: Topology, *, width: int = 78, max_per_layer: int = 6) ->
 
     lines.append("")
     lines.append("EDGES")
-    grouped: dict[str, list[str]] = {}
+    grouped: dict[str, list[tuple[str, int]]] = {}
     for edge in topology.edges:
         relation = RELATION_LABELS.get(edge.relation, edge.relation)
         source = topology.nodes.get(edge.source)
         target = topology.nodes.get(edge.target)
         label = f"{source.label if source else edge.source} → {target.label if target else edge.target}"
-        grouped.setdefault(relation, []).append(clip(label, 54))
+        significance = degrees.get(edge.source, 0) + degrees.get(edge.target, 0)
+        grouped.setdefault(relation, []).append((clip(label, 54), significance))
     if not grouped:
         lines.append("  (no relationships observed)")
     for relation in sorted(grouped):
-        entries = grouped[relation]
+        entries = [label for label, _ in sorted(grouped[relation], key=lambda item: -item[1])]
         lines.append(f"  {relation:<12} {entries[0]}")
         for entry in entries[1:4]:
             lines.append(f"  {'':<12} {entry}")

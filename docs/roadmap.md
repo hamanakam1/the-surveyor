@@ -358,11 +358,32 @@ changelog.
 scheduled by systemd, launchd, or cron is part of the topology and currently
 does not appear.
 
-**Work.** Read systemd unit files and `systemctl list-units` on Linux, and
-`launchctl list` on macOS. Emit `workload:` nodes for units with a distinct
-identity convention, and a `scheduled_by`/`member_of` relation. This is where
-`REL_DEPENDS_ON` and `REL_MEMBER_OF` — currently defined and never emitted —
-earn their place.
+**Done in this release.** A new `services` scanner reads systemd units
+(`systemctl list-units --type=service --all`) and launchd daemons
+(`launchctl print system`), and records them as `workload:` nodes with a
+`runs` edge from the host. `runs` already meant "executes | host → workload",
+so no new relation was needed.
+
+Two decisions worth stating:
+
+- **The scope is the system domain, not the user session.** `launchctl list`
+  in a user session lists an agent for every application the operator has
+  open — 613 of them on the machine this was written on. They come and go
+  with what the operator is doing, which makes them *weather*: recording
+  them would change the fingerprint on every scan and break the promise
+  that a daemon writes an entry only when the infrastructure moves. The
+  system domain holds the machine's own 440 daemons, which do not.
+- **A unit that is not really there is not recorded.** A `not-found` stub
+  the package left behind, or a unit somebody deliberately masked, is not a
+  service the machine runs. Both are skipped, and the plat says how many
+  were.
+
+**Still to do.** Unit *membership* — which target a unit is wanted by, so
+that `multi-user.target` and the services under it are drawn as a group
+rather than as 200 unrelated leaves. `systemctl list-dependencies` answers
+it but is slow, and the mapping belongs in the unit's own `WantedBy=`, which
+means reading the unit files.
+
 
 ### B5. GPU and accelerators
 

@@ -131,7 +131,7 @@ def registry() -> dict[str, ScannerSpec]:
     global _BOOTSTRAPPED  # noqa: PLW0603 - module state, set once
     if not _BOOTSTRAPPED:
         _BOOTSTRAPPED = True
-        from . import host, network, power, workloads  # noqa: F401
+        from . import host, network, power, services, workloads  # noqa: F401
 
     return dict(sorted(_REGISTRY.items()))
 

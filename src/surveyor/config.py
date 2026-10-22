@@ -20,7 +20,7 @@ from .notify import FORMATS, THRESHOLDS, mask_url
 from .util import boolish
 
 #: Scanners enabled on a bare ``surveyor scan``.
-DEFAULT_SCANNERS: tuple[str, ...] = ("power", "host", "network", "workloads")
+DEFAULT_SCANNERS: tuple[str, ...] = ("power", "host", "network", "workloads", "services")
 
 CONFIG_KEYS: frozenset[str] = frozenset(
     {

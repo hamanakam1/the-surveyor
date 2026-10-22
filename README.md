@@ -111,6 +111,19 @@ Useful flags: `--redact` (publishable plats), `--no-save` (look, don't record),
 `--scanners host,network` (narrow the survey), `--json` (script it),
 `--store PATH` (put the ledger somewhere else).
 
+### What each scanner sees
+
+| Scanner | Layer | What it reads |
+| --- | --- | --- |
+| `power` | power | AC mains, batteries, UPS and solar, where the OS reports them |
+| `host` | metal | CPU, memory, storage, thermals, board, boot mode |
+| `network` | network | interfaces, IPv4 and IPv6 subnets, the gateway, neighbours on the wire |
+| `workloads` | workload | containers, the local model server and its models, listening sockets |
+| `services` | workload | systemd units and launchd daemons |
+
+Each scanner is independently failable: if one times out or fails, the
+survey carries on without it and says so.
+
 ### Publish a plat
 
 ```bash
@@ -293,7 +306,7 @@ relations, and an explicit split between structure and telemetry.
 | `power` | utility feeds, batteries, UPS, solar — whatever the OS reports |
 | `metal` | the surveyed host: CPU, memory, thermals, board |
 | `network` | interfaces, IPv4 subnets, unverified devices such as the gateway |
-| `workload` | containers, model servers, models, listening services, volumes |
+| `workload` | containers, model servers, models, listening services, scheduled services |
 
 Read the spec: [`docs/oet-1.0.md`](docs/oet-1.0.md) ·
 JSON Schema: [`schema/oet-1.0.schema.json`](schema/oet-1.0.schema.json) ·
@@ -381,7 +394,7 @@ Layout, failure model, and ledger internals:
 ```
 src/surveyor/
 ├── probe.py        read-only command allowlist
-├── scanners/       power · host · network · workloads
+├── scanners/       power · host · network · workloads · services
 ├── model.py        OET objects, identity, fingerprints
 ├── compiler.py     fan-out, merge, observations
 ├── differ.py       severity-classified structural diff

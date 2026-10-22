@@ -10,7 +10,7 @@ from surveyor.errors import ConfigError
 
 def test_defaults_are_run_ready():
     config = Config()
-    assert config.scanners == ("power", "host", "network", "workloads")
+    assert config.scanners == ("power", "host", "network", "workloads", "services")
     assert config.scribe == "template"
     assert config.redact is False
     assert config.store == default_store()
