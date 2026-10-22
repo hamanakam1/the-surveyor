@@ -19,6 +19,7 @@
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![runtime deps](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![releases](https://img.shields.io/github/v/release/hamanakam1/the-surveyor)](https://github.com/hamanakam1/the-surveyor/releases)
 
 **Empirical infrastructure cartography for the edge.**
 *The map is not the machine. So we survey the machine.*
