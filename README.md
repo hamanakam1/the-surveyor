@@ -43,3 +43,34 @@ OET is an open-source, multi-dimensional JSON/YAML standard that maps the exact 
 ## Status
 
 Early scaffolding - architecture design phase.
+
+## OET Schema Overview
+
+```json
+{
+  "version": "1.0",
+  "timestamp": "2026-10-22T00:00:00Z",
+  "nodes": [...],
+  "power_sources": [...],
+  "networks": [...],
+  "workloads": [...],
+  "edges": [...]
+}
+```
+
+## Usage
+
+```bash
+# Run surveyor daemon
+surveyor daemon --config /etc/surveyor/config.yaml
+
+# Generate one-time snapshot
+surveyor scan --output topology.oet.json
+
+# Diff against previous state
+surveyor diff topology.oet.json
+```
+
+## License
+
+MIT
