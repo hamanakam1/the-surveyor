@@ -1,16 +1,17 @@
-.PHONY: help test scan demo verify validate sample clean
+.PHONY: help test scan demo verify validate sample screenshots clean
 
 PY ?= python3
 export PYTHONPATH := src
 
 help:
-	@echo "make test      run the suite (no dependencies beyond pytest)"
-	@echo "make scan      survey this machine and print the ASCII plat"
-	@echo "make demo      survey into a throwaway ledger and narrate the first change"
-	@echo "make verify    check the local ledger's hash chain"
-	@echo "make validate  validate examples/sample.oet.json"
-	@echo "make sample    regenerate examples/sample.oet.json"
-	@echo "make clean     remove caches"
+	@echo "make test        run the suite (no dependencies beyond pytest)"
+	@echo "make scan        survey this machine and print the ASCII plat"
+	@echo "make demo        survey into a throwaway ledger and narrate the first change"
+	@echo "make verify      check the local ledger's hash chain"
+	@echo "make validate    validate examples/sample.oet.json"
+	@echo "make sample      regenerate examples/sample.oet.json"
+	@echo "make screenshots regenerate docs/screenshots/*.png (needs pillow)"
+	@echo "make clean       remove caches"
 
 test:
 	$(PY) -m pytest
@@ -34,6 +35,9 @@ validate:
 
 sample:
 	$(PY) scripts/make_sample.py
+
+screenshots:
+	$(PY) scripts/make_screenshots.py
 
 clean:
 	rm -rf .pytest_cache src/**/__pycache__ tests/__pycache__ build dist *.egg-info

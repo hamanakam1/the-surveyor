@@ -51,37 +51,7 @@ python3 -m pip install -e .
 surveyor scan --ascii
 ```
 
-```
-◈ surveying edge · site=edge store=~/.surveyor/ledger scanners=power,host,network,workloads
-  · power: 2 nodes, 2 edges in 26ms
-  · host: 1 nodes, 0 edges in 49ms
-  · network: 3 nodes, 3 edges in 59ms
-  · workloads: 14 nodes, 14 edges in 129ms
-
-╭─ POWER · 2 ────────────────────────────────────────────────────────────────╮
-│ ◆ AC mains                                                         utility │
-│ ◆ Internal battery                                          battery · 100% │
-╰────────────────────────────────────────────────────────────────────────────╯
-            ▼
-╭─ BARE METAL · 1 ───────────────────────────────────────────────────────────╮
-│ ▣ Mac (Mac15,8)                          Apple M3 Max · 16 cores · 128 GiB │
-╰────────────────────────────────────────────────────────────────────────────╯
-            ▼
-╭─ NETWORK · 3 ──────────────────────────────────────────────────────────────╮
-│ ⬡ gateway 192.168.53.1                                                     │
-│ ◇ 192.168.53.0/24                                          192.168.53.0/24 │
-│ ⌁ en0 (wifi)                                         wifi · 192.168.53.209 │
-╰────────────────────────────────────────────────────────────────────────────╯
-            ▼
-╭─ WORKLOADS · 14 ───────────────────────────────────────────────────────────╮
-│ ■ ollama                                                            ollama │
-│ ✦ llama3.2:3b                                              3.2B · 1.88 GiB │
-│ ◦ tcp/5000 (ControlCe)                                       all interfaces │
-│ … 11 more                                                                  │
-╰────────────────────────────────────────────────────────────────────────────╯
-
-20 nodes · 19 edges · 4/4 layers observed
-```
+![surveyor scan --ascii, showing the layered plat of an edge box](docs/screenshots/scan.png)
 
 Run it again and it will check the same edges twice and record nothing, because
 the load average moving is not a change to the infrastructure:
@@ -156,6 +126,27 @@ them is a mood board.
 surveyor scan --quiet
 surveyor diff --exit-code    # 0 unchanged, 3 structural change, 1 error
 ```
+
+## What it looks like
+
+A survey, then the diff it produced, then the changelog the scribe wrote about
+that diff. The last two are the point: the map is only useful if something
+can say what moved.
+
+<table>
+<tr>
+  <td width="50%"><img alt="surveyor diff, classifying a structural change" src="docs/screenshots/diff.png" width="100%"><br><sub><b>diff</b> &mdash; what moved, ranked by how much it matters. Telemetry drift is counted and hidden, never structural.</sub></td>
+  <td width="50%"><img alt="surveyor log and surveyor verify, showing a hash-chained ledger" src="docs/screenshots/ledger.png" width="100%"><br><sub><b>ledger</b> &mdash; every survey is a content-addressed object in a parent-linked chain. Recompute it and you know nothing was edited.</sub></td>
+</tr>
+</table>
+
+![the scribe's changelog for a structural change](docs/screenshots/changelog.png)
+
+<sub><b>changelog</b> &mdash; the deterministic template writes the facts. A local model may rewrite the opening paragraph and nothing else.</sub>
+
+Every pixel is generated from live output by
+[`scripts/make_screenshots.py`](scripts/make_screenshots.py) — `make screenshots`
+regenerates the set. Nothing in it is hand-drawn.
 
 ## Why it is built this way
 
@@ -267,10 +258,11 @@ the cadence.
 
 ```bash
 python3 -m pip install -e ".[dev]"
-make test        # 115 tests, well under a second, no network
+make test        # 119 tests, well under a second, no network
 make demo        # survey into a throwaway ledger
 make scan        # survey this machine
 make validate    # validate the bundled sample and a fresh plat
+make screenshots # regenerate docs/screenshots/*.png (needs pillow)
 ```
 
 Layout, failure model, and ledger internals:
@@ -294,6 +286,22 @@ src/surveyor/
 **Status:** 1.0.0 — macOS and Linux are supported and exercised in CI.
 Windows is not a target: the scanners rely on `sysctl`, `/proc`, `sysfs`,
 `pmset`, and `lsof`.
+
+## Roadmap
+
+The long-term plan — what gets built next, and why, in four horizons from
+"trustworthy" through "complete" to "fleet" to "standard" — lives in
+[`docs/roadmap.md`](docs/roadmap.md). It is reviewed each quarter and amended
+in place, so it is a record of decisions rather than a snapshot of intent.
+
+The short version:
+
+| Horizon | Question it answers |
+| --- | --- |
+| **A — Trustworthy** (1.1, 1.2) | Can I believe what it says, and publish it safely? |
+| **B — Complete** (1.3 – 2.0) | Can it see everything that actually runs here? |
+| **C — Fleet** (2.x) | Can it describe twenty boxes and a site? |
+| **D — Standard** (3.x) | Can another tool rely on what it emits? |
 
 ## License
 

@@ -280,6 +280,7 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
                 severity=_edge_severity("removed", edge.relation),
                 label=_edge_label(previous, edge),
                 before=edge.relation,
+                layer=_edge_layer(previous, edge),
             )
         )
     for edge_id in sorted(set(current_edges) - set(previous_edges)):
@@ -292,6 +293,7 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
                 severity=_edge_severity("added", edge.relation),
                 label=_edge_label(current, edge),
                 after=edge.relation,
+                layer=_edge_layer(current, edge),
             )
         )
 
@@ -307,6 +309,17 @@ def _edge_label(topology: Topology, edge: Any) -> str:
         f"--{relation}--> "
         f"{(target.label if target else edge.target)}"
     )
+
+
+def _edge_layer(topology: Topology, edge: Any) -> str:
+    """An edge belongs to the layer of the node that initiates it.
+
+    Without this, every edge change lands in an "Unaligned" bucket and the
+    reader loses the context that tells them which part of the map moved.
+    """
+
+    source = topology.nodes.get(edge.source)
+    return source.layer if source else ""
 
 
 def _sorted(report: DiffReport) -> DiffReport:

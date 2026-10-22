@@ -24,7 +24,7 @@ dependencies = []
 
 [project.optional-dependencies]
 yaml = ["pyyaml>=6"]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pillow>=10"]
 
 [project.scripts]
 surveyor = "surveyor.cli:main"

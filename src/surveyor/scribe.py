@@ -56,6 +56,45 @@ def _layers_present(topology: Topology) -> str:
     return ", ".join(present[:-1]) + f" and {present[-1]}"
 
 
+#: The order in which things are named. A host outranks a workload, a
+#: workload outranks the models and sockets it serves: those are the
+#: consequences of the change, not the change itself.
+_NARRATIVE_RANK = (
+    "host:",
+    "power:",
+    "workload:",
+    "model:",
+    "service:",
+    "network:",
+    "device:",
+    "iface:",
+)
+
+
+def _rank(change: Change) -> int:
+    for index, prefix in enumerate(_NARRATIVE_RANK):
+        if change.entity.startswith(prefix):
+            return index
+    return len(_NARRATIVE_RANK)
+
+
+def _pick(changes: list[Change]) -> list[Change]:
+    """The most newsworthy group of changes.
+
+    Node changes are named before edge changes: an operator cares that a
+    container appeared, not that the edge to it appeared with it. Within
+    whichever pool wins, the highest severity goes first.
+    """
+
+    nodes = [change for change in changes if change.entity_type == "node"]
+    pool = nodes or changes
+    for level in (CRITICAL, WARNING, NOTICE):
+        group = [change for change in pool if change.severity == level]
+        if group:
+            return sorted(group, key=_rank)
+    return []
+
+
 def narrative(report: DiffReport, topology: Topology, previous: Topology | None) -> str:
     """Deterministic opening paragraph, written before any model sees it."""
 
@@ -83,41 +122,32 @@ def narrative(report: DiffReport, topology: Topology, previous: Topology | None)
     if not report.changes:
         return "The sightline fell on the same shape twice. Nothing structural moved."
 
+    structural = [change for change in report.changes if change.severity != INFO]
+    if not structural:
+        return (
+            f"Only the weather changed: {len(report.by_severity(INFO))} telemetry series drifted."
+        )
+
     sentences: list[str] = []
-    critical_removed = [
-        change
-        for change in report.changes
-        if change.severity == CRITICAL and change.action == "removed"
-    ]
-    critical_added = [
-        change
-        for change in report.changes
-        if change.severity == CRITICAL and change.action == "added"
-    ]
-    warnings_removed = [
-        change
-        for change in report.changes
-        if change.severity == WARNING and change.action == "removed" and change.entity_type == "node"
-    ]
-    warnings_added = [
-        change
-        for change in report.changes
-        if change.severity == WARNING and change.action == "added" and change.entity_type == "node"
-    ]
+
+    removed = _pick([change for change in structural if change.action == "removed"])
+    added = _pick([change for change in structural if change.action == "added"])
     modified = [
         change
-        for change in report.changes
-        if change.severity in {WARNING, CRITICAL} and change.action == "modified"
+        for change in structural
+        if change.action == "modified" and change.severity in {WARNING, CRITICAL}
     ]
 
-    if critical_removed:
-        sentences.append(f"Sight was lost on {_names(critical_removed)}.")
-    if critical_added:
-        sentences.append(f"New ground was platted: {_names(critical_added)}.")
-    if warnings_removed:
-        sentences.append(f"{_names(warnings_removed)} came off the map.")
-    if warnings_added:
-        sentences.append(f"{_names(warnings_added)} appeared on the plat.")
+    if removed:
+        if any(change.severity == CRITICAL for change in removed):
+            sentences.append(f"Sight was lost on {_names(removed)}.")
+        else:
+            sentences.append(f"{_names(removed)} came off the map.")
+    if added:
+        if any(change.severity == CRITICAL for change in added):
+            sentences.append(f"New ground was platted: {_names(added)}.")
+        else:
+            sentences.append(f"{_names(added)} appeared on the plat.")
     if modified:
         first = modified[0]
         sentences.append(
@@ -125,9 +155,9 @@ def narrative(report: DiffReport, topology: Topology, previous: Topology | None)
             f"{first.field} went from {clip(first.before, 40)} to {clip(first.after, 40)}."
         )
     if not sentences:
-        sentences.append(
-            f"Only the weather changed: {len(report.by_severity(INFO))} telemetry series drifted."
-        )
+        # Structural, but not a presence change or a shape change: a label
+        # moved. Say something true rather than nothing at all.
+        sentences.append(f"{len(structural)} structural change(s) were recorded.")
     if len(sentences) > 3:
         sentences = sentences[:3]
     return " ".join(sentences)

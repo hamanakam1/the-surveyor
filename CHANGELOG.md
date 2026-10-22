@@ -4,6 +4,36 @@ All notable changes to The Surveyor. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **A long-term plan** (`docs/roadmap.md`): four horizons — *Trustworthy*,
+  *Complete*, *Fleet*, *Standard* — with the work, the reason, the module it
+  lands in, and the evidence that it is done. Includes the sequencing
+  dependencies, the explicit non-goals, and the signals that measure
+  progress.
+- **Screenshots** (`docs/screenshots/*.png`): the survey, the diff, the
+  changelog, and the ledger, rendered from live CLI output by
+  `scripts/make_screenshots.py`. `make screenshots` regenerates the set;
+  nothing in it is hand-drawn.
+
+### Fixed
+
+- **The scribe can no longer contradict its own changelog.** A diff whose
+  changes were all `notice`-level — a container, a model, a socket appearing
+  — produced an empty narrative and fell through to *"Only the weather
+  changed: 1 telemetry series drifted."* while the changelog body underneath
+  listed the structural changes in full. The narrative now partitions
+  structural changes by polarity, names node changes before edge changes,
+  ranks by significance (`host` > `power` > `workload` > `model` > `service` >
+  network kinds), and only reports weather when there is genuinely nothing
+  structural to report.
+- **Edge changes are no longer filed under "Unaligned".** An edge change
+  inherited no layer, so every one of them grouped into a separate heading
+  that meant nothing. An edge now belongs to the layer of the node that
+  initiates it.
+
 ## [1.0.0] — 2026-10-22
 
 The scaffold becomes software. Everything below is new; the previous state of

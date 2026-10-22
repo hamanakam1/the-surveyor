@@ -5,6 +5,7 @@ import pytest
 from surveyor.config import Config
 from surveyor.differ import diff_topologies
 from surveyor.errors import LLMError
+from surveyor.model import Edge, Node, Topology
 from surveyor.scribe import compose_changelog, narrative, polish
 
 from conftest import build_topology, change_fact, change_telemetry, without_node
@@ -33,6 +34,38 @@ def test_narrative_invents_nothing(topology):
     text = narrative(report, changed, topology)
     assert "weather" in text
     assert "9.0" not in text
+
+
+def test_narrative_never_claims_the_weather_moved_when_the_map_did(topology):
+    """A notice-only diff is still structural. The prose must say so."""
+
+    extended = Topology.from_dict(topology.to_dict())
+    extended.add(Node("workload:docker:api", "workload", "api", facts={"runtime": "docker"}))
+    report = diff_topologies(topology, extended)
+    assert report.structural is True
+    text = narrative(report, extended, topology)
+    assert "weather" not in text
+    assert "api" in text
+
+
+def test_narrative_names_nodes_before_edges(topology):
+    extended = Topology.from_dict(topology.to_dict())
+    extended.connect(Edge("host:lab", "runs", "workload:docker:api", {}))
+    extended.add(
+        Node("workload:docker:api", "workload", "api", facts={"runtime": "docker"})
+    )
+    report = diff_topologies(topology, extended)
+    text = narrative(report, extended, topology)
+    assert "api appeared on the plat" in text
+
+
+def test_narrative_survives_a_diff_of_edges_only(topology):
+    extended = Topology.from_dict(topology.to_dict())
+    extended.connect(Edge("workload:docker:web", "depends_on", "device:192.168.53.1", {}))
+    report = diff_topologies(topology, extended)
+    text = narrative(report, extended, topology)
+    assert "weather" not in text
+    assert "appeared on the plat" in text
 
 
 def test_markdown_contains_facts_and_no_model_when_template(topology):

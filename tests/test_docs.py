@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from surveyor.ascii import BANNER
@@ -46,6 +47,28 @@ def test_example_config_loads_and_names_a_site():
     assert config.site == "edge-lab"
     assert "workloads" in config.scanners
     assert config.scribe in {"template", "ollama"}
+
+
+def test_readme_images_exist():
+    """A broken image in the README is a broken README."""
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    sources = set(re.findall(r'<img[^>]+src="([^"]+)"', readme))
+    sources |= set(re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", readme))
+    # Remote badges and links are not files we own.
+    local = sorted(source for source in sources if "://" not in source)
+    assert local, "the README should show at least one screenshot"
+    for source in local:
+        assert (ROOT / source).exists(), f"README references a missing image: {source}"
+
+
+def test_screenshots_are_regenerable():
+    """The screenshot set must be produced by a script, not by hand."""
+
+    script = (ROOT / "scripts" / "make_screenshots.py").read_text(encoding="utf-8")
+    assert "surveyor" in script
+    shots = sorted((ROOT / "docs" / "screenshots").glob("*.png"))
+    assert shots, "no screenshots were committed"
 
 
 def test_docs_reference_the_schema_that_exists():

@@ -99,6 +99,16 @@ def test_edge_addition_is_a_notice(topology):
     assert "depends on" in edge_changes[0].label
 
 
+def test_edge_changes_inherit_the_layer_of_their_source(topology):
+    extended = Topology.from_dict(topology.to_dict())
+    extended.connect(Edge("workload:docker:web", "depends_on", "device:192.168.53.1", {}))
+    report = diff_topologies(topology, extended)
+    edge_changes = [change for change in report.changes if change.entity_type == "edge"]
+    assert len(edge_changes) == 1
+    assert edge_changes[0].layer == "workload"
+    assert "Unaligned" not in render_text(report)
+
+
 def test_label_change_is_reported(topology):
     renamed = Topology.from_dict(topology.to_dict())
     node = renamed.nodes["workload:docker:web"]
