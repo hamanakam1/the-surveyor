@@ -71,6 +71,10 @@ _IFCONFIG_INET = re.compile(
     r"^\s+inet\s+(?P<addr>\d{1,3}(?:\.\d{1,3}){3})\s+netmask\s+(?P<mask>0x[0-9a-f]+|\d{1,3}(?:\.\d{1,3}){3})",
     re.IGNORECASE,
 )
+_IFCONFIG_INET6 = re.compile(
+    r"^\s+inet6\s+(?P<addr>[0-9a-f:]+)(?:%\S+)?\s+prefixlen\s+(?P<prefix>\d+)",
+    re.IGNORECASE,
+)
 _IFCONFIG_MAC = re.compile(r"^\s+ether\s+(?P<mac>[0-9a-f]{1,2}(?::[0-9a-f]{1,2}){5})", re.IGNORECASE)
 _IFCONFIG_STATUS = re.compile(r"^\s+status:\s+(?P<status>\w+)", re.IGNORECASE)
 _IP_ADDR = re.compile(r"^\d+:\s+(?P<name>[^:@\s]+)(?:@\S+)?\s+(?P<family>inet6?)\s+(?P<addr>\S+)")
@@ -80,9 +84,14 @@ _IP_LINK = re.compile(
 _IP_MAC = re.compile(r"link/ether\s+(?P<mac>[0-9a-f:]{17})", re.IGNORECASE)
 _IP_STATE = re.compile(r"\bstate\s+(?P<state>[A-Z]+)")
 _ROUTE_GATEWAY = re.compile(r"^\s*gateway:\s*(?P<gateway>\d{1,3}(?:\.\d{1,3}){3})", re.MULTILINE)
+_ROUTE_GATEWAY6 = re.compile(r"^\s*gateway:\s*(?P<gateway>[0-9a-f:]+)(?:%\S+)?\s*$", re.MULTILINE | re.IGNORECASE)
 _ROUTE_INTERFACE = re.compile(r"^\s*interface:\s*(?P<iface>\S+)", re.MULTILINE)
 _DEFAULT_ROUTE = re.compile(
     r"default\s+via\s+(?P<gateway>\d{1,3}(?:\.\d{1,3}){3})(?:\s+dev\s+(?P<iface>\S+))?"
+)
+_DEFAULT_ROUTE6 = re.compile(
+    r"^default\s+via\s+(?P<gateway>[0-9a-f:]+)(?:%\S+)?(?:\s+dev\s+(?P<iface>\S+))?",
+    re.MULTILINE | re.IGNORECASE,
 )
 _HARDWARE_PORT = re.compile(r"Hardware Port:\s*(?P<port>.+?)\s*\nDevice:\s*(?P<device>\S+)")
 _WIFI_NETWORK = re.compile(r"Current Wi-Fi Network:\s*(?P<ssid>.+)")
@@ -137,11 +146,18 @@ class Interface:
     state: str = ""
     up: bool = False
     ipv4: list[tuple[str, int]] = field(default_factory=list)
+    ipv6: list[tuple[str, int]] = field(default_factory=list)
     kind: str = "unknown"
 
     @property
     def primary_address(self) -> str:
         return self.ipv4[0][0] if self.ipv4 else ""
+
+    @property
+    def addressed(self) -> bool:
+        """Whether this interface has an address of any family."""
+
+        return bool(self.ipv4 or self.ipv6)
 
     def to_facts(self) -> dict[str, Any]:
         facts: dict[str, Any] = {"name": self.name, "kind": self.kind}
@@ -152,6 +168,8 @@ class Interface:
         if self.ipv4:
             facts["ipv4"] = [f"{addr}/{prefix}" for addr, prefix in self.ipv4]
             facts["address"] = self.primary_address
+        if self.ipv6:
+            facts["ipv6"] = [f"{addr}/{prefix}" for addr, prefix in self.ipv6]
         return facts
 
 
@@ -194,6 +212,15 @@ def parse_ifconfig(text: str) -> list[Interface]:
                 (inet.group("addr"), _mask_to_prefix(inet.group("mask")))
             )
             continue
+        inet6 = _IFCONFIG_INET6.match(raw)
+        if inet6:
+            address = inet6.group("addr")
+            try:
+                parsed = ipaddress.IPv6Address(address)
+            except ValueError:
+                continue
+            current.ipv6.append((str(parsed), int(inet6.group("prefix"))))
+            continue
         status = _IFCONFIG_STATUS.match(raw)
         if status:
             current.state = status.group("status").lower()
@@ -221,16 +248,26 @@ def parse_ip_addr(addr_text: str, link_text: str = "") -> list[Interface]:
 
     for raw in addr_text.splitlines():
         match = _IP_ADDR.match(raw)
-        if not match or match.group("family") != "inet":
+        if not match:
             continue
         name = match.group("name")
         iface = found.setdefault(name, Interface(name=name))
         address = match.group("addr")
+        if match.group("family") == "inet":
+            try:
+                parsed = ipaddress.IPv4Interface(address)
+            except ValueError:
+                continue
+            iface.ipv4.append((str(parsed.ip), parsed.network.prefixlen))
+            continue
+        # IPv6. The scope suffix (``%en0``) is a local routing detail, not
+        # part of the address.
+        bare = address.split("%", 1)[0]
         try:
-            parsed = ipaddress.IPv4Interface(address)
+            parsed = ipaddress.IPv6Interface(bare)
         except ValueError:
             continue
-        iface.ipv4.append((str(parsed.ip), parsed.network.prefixlen))
+        iface.ipv6.append((str(parsed.ip), parsed.network.prefixlen))
     return list(found.values())
 
 
@@ -301,24 +338,74 @@ def classify(name: str, port_name: str = "") -> str:
     return "unknown"
 
 
-def _default_route(ctx: ScanContext, log: ProbeLog) -> tuple[str, str]:
+@dataclass(slots=True)
+class Route:
+    """A default route, of either family."""
+
+    family: str
+    gateway: str
+    interface: str = ""
+
+
+def _default_routes(ctx: ScanContext, log: ProbeLog) -> list[Route]:
+    """The host's default routes, for both address families.
+
+    A dual-stacked box has two of them, and a map that only shows one is
+    showing half of the story.
+    """
+
+    routes: list[Route] = []
     if ctx.platform == "darwin":
         probe = log.add(run(["route", "-n", "get", "default"], timeout=ctx.timeout))
         if probe.ok:
             gateway = _ROUTE_GATEWAY.search(probe.stdout)
             iface = _ROUTE_INTERFACE.search(probe.stdout)
-            return (
-                gateway.group("gateway") if gateway else "",
-                iface.group("iface") if iface else "",
-            )
-        return "", ""
+            if gateway:
+                routes.append(
+                    Route(
+                        family="ipv4",
+                        gateway=gateway.group("gateway"),
+                        interface=iface.group("iface") if iface else "",
+                    )
+                )
+        probe6 = log.add(run(["route", "-n", "get", "-inet6", "default"], timeout=ctx.timeout))
+        if probe6.ok:
+            gateway6 = _ROUTE_GATEWAY6.search(probe6.stdout)
+            iface6 = _ROUTE_INTERFACE.search(probe6.stdout)
+            if gateway6:
+                routes.append(
+                    Route(
+                        family="ipv6",
+                        gateway=gateway6.group("gateway"),
+                        interface=iface6.group("iface") if iface6 else "",
+                    )
+                )
+        return routes
 
-    probe = log.add(run(["ip", "route", "show", "default"], timeout=ctx.timeout))
-    if probe.ok:
-        match = _DEFAULT_ROUTE.search(probe.stdout)
-        if match:
-            return match.group("gateway"), match.group("iface") or ""
-    return "", ""
+    if ctx.platform.startswith("linux"):
+        probe = log.add(run(["ip", "route", "show", "default"], timeout=ctx.timeout))
+        if probe.ok:
+            match = _DEFAULT_ROUTE.search(probe.stdout)
+            if match:
+                routes.append(
+                    Route(
+                        family="ipv4",
+                        gateway=match.group("gateway"),
+                        interface=match.group("iface") or "",
+                    )
+                )
+        probe6 = log.add(run(["ip", "-6", "route", "show", "default"], timeout=ctx.timeout))
+        if probe6.ok:
+            match6 = _DEFAULT_ROUTE6.search(probe6.stdout)
+            if match6:
+                routes.append(
+                    Route(
+                        family="ipv6",
+                        gateway=match6.group("gateway"),
+                        interface=match6.group("iface") or "",
+                    )
+                )
+    return routes
 
 
 def _collect(ctx: ScanContext, log: ProbeLog) -> tuple[list[Interface], dict[str, str]]:
@@ -344,6 +431,26 @@ def _collect(ctx: ScanContext, log: ProbeLog) -> tuple[list[Interface], dict[str
         return [Interface(name=name) for _, name in socket.if_nameindex()], {}
     except OSError:  # pragma: no cover - defensive
         return [], {}
+
+
+def _ipv6_scope(address: str) -> str:
+    """The scope of an IPv6 address: link, local, or global.
+
+    A link-local address is not a routable identity, and a plat that calls
+    one global is lying about the shape of the network.
+    """
+
+    try:
+        parsed = ipaddress.IPv6Address(address)
+    except ValueError:
+        return "unknown"
+    if parsed.is_link_local:
+        return "link-local"
+    if parsed.is_private:
+        return "local"
+    if parsed.is_multicast:
+        return "multicast"
+    return "global"
 
 
 def _device_id(mac: str) -> str:
@@ -394,7 +501,10 @@ def scan_network(ctx: ScanContext) -> ScanResult:
     result = ScanResult(scanner="network", layer=LAYER_NETWORK)
     log = ProbeLog()
     interfaces, ports = _collect(ctx, log)
-    gateway, gateway_iface = _default_route(ctx, log)
+    routes = _default_routes(ctx, log)
+    gateway_route = next((route for route in routes if route.family == "ipv4"), None)
+    gateway = gateway_route.gateway if gateway_route else ""
+    gateway_iface = gateway_route.interface if gateway_route else ""
     host = local_host_id()
 
     if not interfaces:
@@ -409,7 +519,7 @@ def scan_network(ctx: ScanContext) -> ScanResult:
             continue
         if iface.kind == "virtual" and not ctx.config.include_virtual_interfaces:
             continue
-        if not iface.ipv4:
+        if not iface.addressed:
             # A port with no address is cabling, not topology. Say how many
             # were skipped rather than silently shrinking the map.
             omitted += 1
@@ -466,6 +576,37 @@ def scan_network(ctx: ScanContext) -> ScanResult:
             result.edges.append(Edge(node_id, REL_ATTACHES_TO, network_id, {"address": address}))
             subnets.append((network, network_id))
 
+        for address, prefix in iface.ipv6:
+            try:
+                network = ipaddress.ip_network(f"{address}/{prefix}", strict=False)
+            except ValueError:
+                continue
+            if network.prefixlen >= 128:
+                continue
+            network_id = f"network:{network.with_prefixlen}"
+            result.nodes.append(
+                Node(
+                    id=network_id,
+                    kind=KIND_NETWORK,
+                    label=network.with_prefixlen,
+                    facts={
+                        "cidr": network.with_prefixlen,
+                        "family": "ipv6",
+                        "private": network.is_private,
+                        "size": network.num_addresses,
+                        "scope": _ipv6_scope(address),
+                    },
+                    tags=(
+                        "subnet",
+                        "private" if network.is_private else "public",
+                        _ipv6_scope(address),
+                    ),
+                    source="network",
+                )
+            )
+            result.edges.append(Edge(node_id, REL_ATTACHES_TO, network_id, {"address": address}))
+            subnets.append((network, network_id))
+
     peers = _neighbours(ctx, log)
     own_macs = {iface.mac.lower() for iface in interfaces if iface.mac}
     own_addresses = {address for iface in interfaces for address, _ in iface.ipv4}
@@ -493,6 +634,31 @@ def scan_network(ctx: ScanContext) -> ScanResult:
             )
         )
         result.edges.append(Edge(host, REL_ROUTES_VIA, gateway_id, {"role": "default"}))
+
+    # The IPv6 default route, if the host has one. A dual-stacked box has
+    # two gateways, and a map that shows one of them is showing half.
+    for route in routes:
+        if route.family != "ipv6" or not route.gateway:
+            continue
+        gateway_id = f"device:{route.gateway}"
+        result.nodes.append(
+            Node(
+                id=gateway_id,
+                kind=KIND_DEVICE,
+                label=f"gateway {route.gateway}",
+                facts={
+                    "role": "gateway",
+                    "address": route.gateway,
+                    "family": "ipv6",
+                    "scope": _ipv6_scope(route.gateway),
+                },
+                tags=("gateway", "unverified"),
+                source="network",
+            )
+        )
+        result.edges.append(
+            Edge(host, REL_ROUTES_VIA, gateway_id, {"role": "default", "family": "ipv6"})
+        )
 
     unidentified = 0
     for peer in peers:
@@ -539,7 +705,7 @@ def scan_network(ctx: ScanContext) -> ScanResult:
             "an address is not an identity"
         )
     if omitted:
-        result.warn(f"{omitted} interface(s) without an IPv4 address omitted from the plat")
+        result.warn(f"{omitted} interface(s) without an address omitted from the plat")
     for note in log.notes():
         result.warn(note)
     if not any(node.kind == KIND_INTERFACE for node in result.nodes):

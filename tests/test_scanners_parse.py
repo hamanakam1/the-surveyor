@@ -79,6 +79,27 @@ def test_parse_ifconfig_extracts_addresses_and_state():
     assert interfaces["en5"].state == "inactive"
 
 
+def test_parse_ifconfig_reads_ipv6_too():
+    """A dual-stacked box has two address families, and both are topology."""
+
+    interfaces = {iface.name: iface for iface in parse_ifconfig(IFCONFIG)}
+    en0 = interfaces["en0"]
+    assert en0.ipv6 == [("fe80::1c2b:3c4d:5e6f:7081", 64)]
+    assert en0.addressed is True
+
+
+def test_parse_ip_addr_reads_ipv6_too():
+    addr = (
+        "2: enp0s31f6    inet 10.0.0.5/24 brd 10.0.0.255 scope global dynamic enp0s31f6\n"
+        "2: enp0s31f6    inet6 2001:db8::1/64 scope global \n"
+        "2: enp0s31f6    inet6 fe80::1/64 scope link\n"
+    )
+    interfaces = parse_ip_addr(addr)
+    iface = interfaces[0]
+    assert iface.ipv4 == [("10.0.0.5", 24)]
+    assert iface.ipv6 == [("2001:db8::1", 64), ("fe80::1", 64)]
+
+
 def test_parse_ip_addr_combines_link_and_address_views():
     addr = (
         "2: enp0s31f6    inet 10.0.0.5/24 brd 10.0.0.255 scope global dynamic enp0s31f6\n"

@@ -8,6 +8,13 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **IPv6, first class.** The network scanner parsed only `inet` records, so
+  every IPv6 address, prefix and route was invisible, and an IPv6-only
+  interface was dropped as "an interface without an IPv4 address". IPv6
+  addresses and prefixes are now parsed on both platforms and emitted as
+  `network:` nodes with `family: "ipv6"` and a `scope` of `link-local`,
+  `local` or `global`; the IPv6 default route becomes a device node with a
+  `routes_via` edge; and an interface with only an IPv6 address is kept.
 - **Peer discovery.** The network scanner reads the system's
   address-resolution table (`arp -an` on macOS, `ip neigh show` on Linux) and
   records the neighbours it finds as `device` nodes on the subnet they were

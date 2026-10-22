@@ -281,12 +281,20 @@ address, prefix, and route is invisible, and IPv6-only interfaces are
 dropped entirely as "interfaces without an IPv4 address". For an edge box
 that is dual-stacked, half the addressing story is missing.
 
-**Work.** Parse `inet6` on macOS (`ifconfig`) and `ip -6` on Linux; emit
-IPv6 interface addresses and IPv6 prefixes as `network:` nodes with
-`family: "ipv6"`; model IPv6 default routes as `routes_via` to an IPv6
-gateway; and extend redaction (A2) to mask IPv6 host bits the way it masks
-public IPv4. Add `family` to the identity of a subnet node so `192.168.1.0/24`
-and `2001:db8::/32` cannot collide.
+**Done in this release.** IPv6 addresses are parsed on macOS (`ifconfig`) and
+Linux (`ip -o addr`); IPv6 prefixes are emitted as `network:` nodes with
+`family: "ipv6"` and a `scope` of `link-local`, `local`, `global` or
+`multicast`; the IPv6 default route becomes a device node with a `routes_via`
+edge; and an interface with only an IPv6 address is kept rather than
+dropped. Redaction masks globally routable IPv6 to its routing prefix, and
+leaves link-local and unique-local addresses alone, exactly as it treats
+private IPv4.
+
+**Still to do.** The neighbour table is still IPv4-only: `arp` and `ip
+neigh` both list IPv6 neighbours too, and a dual-stacked LAN has peers that
+only speak IPv6. Those peers are invisible until the parsers learn the
+`lladdr` form of an IPv6 neighbour entry.
+
 
 ### B2. Storage, volumes and filesystems
 

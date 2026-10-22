@@ -23,7 +23,7 @@ The map is read top-down, from the wall socket to the listening socket.
 | --- | --- | --- |
 | Power | `power` | utility feeds, batteries, UPS, solar where the OS reports it |
 | Bare metal | `metal` | the surveyed host itself |
-| Network | `network` | interfaces, IPv4 subnets, unverified devices such as the default gateway |
+| Network | `network` | interfaces, IPv4 and IPv6 subnets, unverified devices such as the default gateway |
 | Workloads | `workload` | containers, model servers, models, listening services, volumes |
 
 Layer is a presentation and diffing affordance. It never changes the identity
@@ -169,6 +169,7 @@ before concluding that a workload is gone.
 | MAC address | vendor prefix kept, host bits replaced: `f0:18:98:xx:xx:xx` |
 | Public IPv4 | host bits masked: `93.184.x.x` |
 | Public IPv6 | routing prefix kept: `2606:2800:220:1::` |
+| Link-local, unique-local, loopback addresses | preserved -- a topology map needs them |
 | Private, loopback, link-local addresses | preserved -- a topology map needs them |
 | Hardware model, CPU model, ports, versions, counts | preserved -- this is the shape |
 | Telemetry values | treated like any other value |

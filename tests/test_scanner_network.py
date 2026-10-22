@@ -46,9 +46,14 @@ class FakeRunner:
         vector = tuple(argv)
         self.calls.append(vector)
         command = " ".join(vector)
+        # The longest matching needle wins, so a specific command can be
+        # answered differently from the general one it contains.
+        best: tuple[int, str] | None = None
         for needle, output in self.table.items():
-            if needle in command:
-                return Probe(vector, ok=True, stdout=output)
+            if needle in command and (best is None or len(needle) > best[0]):
+                best = (len(needle), output)
+        if best is not None:
+            return Probe(vector, ok=True, stdout=best[1])
         return Probe(vector, ok=False, reason="not installed")
 
 
@@ -155,3 +160,56 @@ def test_linux_reads_the_neighbour_table_too():
     )
     devices = [node for node in result.nodes if node.kind == KIND_DEVICE]
     assert any(node.id == "device:11-22-33-44-55-66" for node in devices)
+
+
+IFCONFIG6 = """en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+\tether f0:18:98:aa:bb:cc
+\tinet6 fe80::1c2b:3c4d:5e6f:7081%en0 prefixlen 64 secured scopeid 0xe
+\tinet6 2001:db8:abcd::1 prefixlen 64 autoconf secured
+\tinet 192.168.53.209 netmask 0xffffff00 broadcast 192.168.53.255
+\tstatus: active
+"""
+
+ROUTE6 = """   route to: default
+destination: default
+       mask: default
+    gateway: fe80::1%en0
+  interface: en0
+"""
+
+
+def test_an_ipv6_prefix_becomes_a_subnet():
+    result, _ = _run({"ifconfig": IFCONFIG6, "route": ROUTE, "arp": ARP})
+    prefixes = {
+        node.id: node for node in result.nodes if node.kind == "network"
+    }
+    assert "network:2001:db8:abcd::/64" in prefixes
+    assert prefixes["network:2001:db8:abcd::/64"].facts["family"] == "ipv6"
+    assert prefixes["network:fe80::/64"].facts["scope"] == "link-local"
+
+
+def test_an_ipv6_gateway_becomes_a_device():
+    result, _ = _run(
+        {"ifconfig": IFCONFIG6, "route": ROUTE, "route -n get -inet6": ROUTE6, "arp": ARP}
+    )
+    gateways = [
+        node
+        for node in result.nodes
+        if node.kind == KIND_DEVICE and node.facts.get("family") == "ipv6"
+    ]
+    assert len(gateways) == 1
+    assert gateways[0].facts["address"] == "fe80::1"
+    assert gateways[0].facts["scope"] == "link-local"
+
+
+def test_an_ipv6_only_interface_is_not_dropped():
+    """It was dropped before, because the rule said "without an IPv4 address"."""
+
+    only_v6 = """en1: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+\tether f0:18:98:aa:bb:cd
+\tinet6 fe80::9999:8888:7777:6666%en1 prefixlen 64 secured scopeid 0x7
+\tstatus: active
+"""
+    result, _ = _run({"ifconfig": only_v6, "route": ROUTE, "arp": ARP})
+    assert [node for node in result.nodes if node.kind == "interface"]
+    assert not any("without an address" in note for note in result.notes)
