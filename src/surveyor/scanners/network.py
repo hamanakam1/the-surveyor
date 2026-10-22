@@ -496,6 +496,10 @@ def _wifi_ssid(ctx: ScanContext, device: str, log: ProbeLog) -> str:
     "network",
     LAYER_NETWORK,
     "Interfaces, IPv4 subnets, the default gateway, and neighbours on the wire",
+    tools={
+        "darwin": ("ifconfig", "route", "networksetup", "arp"),
+        "linux": ("ip",),
+    },
 )
 def scan_network(ctx: ScanContext) -> ScanResult:
     result = ScanResult(scanner="network", layer=LAYER_NETWORK)

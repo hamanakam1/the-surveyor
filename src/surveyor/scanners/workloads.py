@@ -657,6 +657,9 @@ def scan_udp_listeners(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> N
     "workloads",
     LAYER_WORKLOAD,
     "Docker containers, a local Ollama server with its models, and listening sockets",
+    tools={
+        "any": ("docker", "podman", "nerdctl", "lsof", "ss"),
+    },
 )
 def scan_workloads(ctx: ScanContext) -> ScanResult:
     result = ScanResult(scanner="workloads", layer=LAYER_WORKLOAD)

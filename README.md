@@ -104,6 +104,7 @@ surveyor history
 | `surveyor diff` | Compare two plats; `--exit-code` returns 3 when structure changed. |
 | `surveyor log` | List recorded surveys. |
 | `surveyor history` | What changed, and when it changed. |
+| `surveyor doctor` | Say what this machine lets the Surveyor see. |
 | `surveyor verify` | Recompute the hash chain and every object digest. |
 | `surveyor daemon` | Survey every `interval` seconds; one entry per real change. |
 | `surveyor notify` | Send a test notification to the configured webhooks. |
@@ -132,6 +133,30 @@ Useful flags: `--redact` (publishable plats), `--no-save` (look, don't record),
 
 Each scanner is independently failable: if one times out or fails, the
 survey carries on without it and says so.
+
+### When a layer is empty
+
+The first question on an unfamiliar box is always *why is my power layer
+empty?* — and the answer is always one of three things: the tool is not
+installed, the tool is not on the allowlist, or the scanner was told to skip
+it. `surveyor doctor` answers all three without running a survey.
+
+```bash
+surveyor doctor
+# ◈ the-surveyor 1.0.0 (OET 1.0)
+#   platform   darwin/arm64 · Python 3.14.6
+#   store      /Users/you/.surveyor/ledger (writable)
+#   config     none found; using the defaults
+#
+#   ✓ host       metal     ready
+#   ✓ network    network   ready
+#   ✓ power      power     ready
+#   ✓ services   workload  ready
+#   ✓ workloads  workload  ready (no nerdctl, ss)
+```
+
+Every scanner declares the programs it uses *on each platform*, next to the
+code that uses them, so the answer cannot go stale.
 
 ### Publish a plat
 

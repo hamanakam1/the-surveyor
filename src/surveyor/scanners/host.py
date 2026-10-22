@@ -298,6 +298,10 @@ def _storage(
     "host",
     LAYER_METAL,
     "CPU, memory, storage, thermals, and board identity of the machine running the survey",
+    tools={
+        "darwin": ("sysctl", "sw_vers", "pmset", "df"),
+        "linux": ("uname", "df"),
+    },
 )
 def scan_host(ctx: ScanContext) -> ScanResult:
     log = ProbeLog()

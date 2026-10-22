@@ -8,6 +8,15 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **`surveyor doctor`**: what this machine actually lets the Surveyor see.
+  The first question on an unfamiliar box is always "why is my power layer
+  empty?", and the answer is always one of three things — the tool is not
+  installed, the tool is not on the allowlist, or the scanner was told to
+  skip it. The doctor answers all three without running a survey: the
+  platform, the store and whether it is writable, the config in effect,
+  every allowlisted tool and where it resolved, and each scanner with the
+  programs it uses *on this platform*. The declaration lives next to the
+  scanner that wants it, so it cannot go stale.
 - **`surveyor history`**: what changed, and when it changed. The ledger
   writes a changelog only when the structure moved, so the history is the
   record itself rather than a log of surveys that found nothing. The

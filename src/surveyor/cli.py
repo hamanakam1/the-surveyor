@@ -103,6 +103,12 @@ def build_parser() -> argparse.ArgumentParser:
     history.add_argument("--json", action="store_true")
     history.set_defaults(handler=_cmd_history)
 
+    doctor = subparsers.add_parser(
+        "doctor", parents=[common], help="say what this machine lets the Surveyor see"
+    )
+    doctor.add_argument("--json", action="store_true")
+    doctor.set_defaults(handler=_cmd_doctor)
+
     show = subparsers.add_parser("show", parents=[common], help="print a recorded plat")
     show.add_argument("ref", nargs="?", default="HEAD", help="seq, digest prefix, or file (default HEAD)")
     show.add_argument("--format", choices=("ascii", "markdown", "mermaid", "json"), default="ascii")
@@ -585,6 +591,25 @@ def _narrative_of(path: Path) -> str:
         paragraphs.append(stripped)
         break
     return paragraphs[0] if paragraphs else ""
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    """Say what this machine lets the Surveyor see."""
+
+    from .doctor import examine, render
+
+    config = _config(args)
+    config_path = getattr(args, "config", "") or ""
+    if not config_path:
+        default = default_config_path()
+        config_path = str(default) if default.exists() else ""
+
+    report = examine(config, config_path=config_path)
+    if args.json:
+        _emit_json(report.to_dict())
+        return EXIT_OK
+    print(render(report))
+    return EXIT_OK
 
 
 def _cmd_show(args: argparse.Namespace) -> int:

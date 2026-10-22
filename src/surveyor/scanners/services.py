@@ -134,6 +134,10 @@ def parse_launchd_services(text: str) -> list[Unit]:
     "services",
     LAYER_WORKLOAD,
     "Scheduled services: systemd units and launchd daemons",
+    tools={
+        "darwin": ("launchctl",),
+        "linux": ("systemctl",),
+    },
 )
 def scan_services(ctx: ScanContext) -> ScanResult:
     result = ScanResult(scanner="services", layer=LAYER_WORKLOAD)

@@ -268,6 +268,12 @@ def _scan_linux(_ctx: ScanContext, result: ScanResult, host_id: str) -> None:
     "power",
     LAYER_POWER,
     "Power sources and charge state: AC, batteries, UPS, solar where the OS reports it",
+    tools={
+        # On Linux the power layer is read straight out of
+        # /sys/class/power_supply and needs no program at all.
+        "darwin": ("pmset", "ioreg"),
+        "linux": (),
+    },
 )
 def scan_power(ctx: ScanContext) -> ScanResult:
     result = ScanResult(scanner="power", layer=LAYER_POWER)

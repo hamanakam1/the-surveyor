@@ -82,6 +82,18 @@ class ScannerSpec:
     layer: str
     description: str
     fn: ScannerFn
+    #: The programs this scanner uses, per platform. Declared next to the
+    #: scanner that wants them, so "why is my power layer empty?" has an
+    #: answer. An empty list means the scanner reads the filesystem
+    #: directly and needs no program at all.
+    tools: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+    def tools_for(self, platform: str) -> tuple[str, ...]:
+        """The programs this scanner uses on a given platform."""
+
+        if platform in self.tools:
+            return self.tools[platform]
+        return self.tools.get("any", ())
 
     def run(self, ctx: ScanContext) -> ScanResult:
         started = time.perf_counter()
@@ -107,14 +119,25 @@ _REGISTRY: dict[str, ScannerSpec] = {}
 _BOOTSTRAPPED = False
 
 
-def register(name: str, layer: str, description: str) -> Callable[[ScannerFn], ScannerFn]:
+def register(
+    name: str,
+    layer: str,
+    description: str,
+    tools: dict[str, tuple[str, ...]] | None = None,
+) -> Callable[[ScannerFn], ScannerFn]:
     """Register a scanner under a stable CLI name."""
 
     def decorator(fn: ScannerFn) -> ScannerFn:
         key = name.strip().lower()
         if key in _REGISTRY:
             raise RuntimeError(f"scanner {key!r} is already registered")
-        _REGISTRY[key] = ScannerSpec(name=key, layer=layer, description=description, fn=fn)
+        _REGISTRY[key] = ScannerSpec(
+            name=key,
+            layer=layer,
+            description=description,
+            fn=fn,
+            tools=dict(tools or {}),
+        )
         return fn
 
     return decorator
