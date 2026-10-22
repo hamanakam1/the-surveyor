@@ -46,6 +46,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ["3.11", "3.12", "3.13"]
+        exclude:
+          # The version axis is about the code, which is the same on every
+          # platform; the platform axis is about the parsers, which are not.
+          # The full version range runs on Linux, and macOS runs the oldest
+          # and the newest, so the macOS runners -- which are the scarce
+          # ones -- carry a third of the load.
+          - os: macos-latest
+            python: "3.12"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
