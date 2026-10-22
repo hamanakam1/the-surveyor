@@ -12,6 +12,40 @@ its own host and writes down what it found.
 
 ---
 
+## 0. Where the plan stands
+
+This document is amended in place as the work lands, so the tables below
+are a record of decisions rather than a snapshot of intent.
+
+| Item | State | Note |
+| --- | --- | --- |
+| A1 — the scribe may not contradict the record | **done** | the narrative now partitions structural changes and only reports weather when there is nothing structural |
+| A2 — redaction that is actually safe | **done** | a declared inventory of identifiers, keyed aliases, ids and edges redacted, and an audit command |
+| A3 — the schema becomes executable | **done** | the contract in code, a generated schema, and a conformance suite of one broken document per rule |
+| A4 — determinism and golden plats | **partly** | fingerprints and reorder-invariance are pinned; recorded per-platform command output is not yet a golden plat |
+| A5 — release and repository hygiene | **done** | ruff, mypy, a coverage floor, a release workflow, and a CI job that refuses a stale schema |
+| A6 — the probe boundary | **done** | absolute paths, a wider credential scrub, process-group kills, and a least-privilege allowlist |
+| B1 — IPv6, first class | **done** | addresses, prefixes, gateways, and redaction |
+| B2 — storage and volumes | **partly** | filesystems are facts on the host; container volumes are nodes; filesystems as nodes is an OET 1.1 decision |
+| B3 — containers beyond Docker | **done** | Docker, podman and nerdctl, normalised into one record |
+| B4 — schedulers | **done** | systemd units and launchd daemons |
+| B5 — accelerators | **open** | `nvidia-smi` is allowlisted but nothing calls it |
+| B6 — peers, and a gateway that is not a guess | **done** | the neighbour table, and device ids that survive a DHCP lease |
+| B7 — power beyond AC and battery | **partly** | the layer stopped claiming more than the OS knows; macOS still cannot tell a UPS from a wall socket |
+| B8 — identity stability | **done** | devices are named by hardware address, long names carry a digest |
+| B9 — sockets, in full | **partly** | UDP services are recorded; Unix sockets are deliberately not |
+| B10 — OET 2.0 | **open** | the vocabulary has not needed a new noun yet |
+| B11 — performance | **partly** | a full survey is a few hundred milliseconds; the budget is not yet a test |
+| C1 — moving plats between ledgers | **done** | `export` and `import`, with the local history left undisturbed |
+| C2 — one map for many hosts | **done** | `surveyor fleet`, composed by identity |
+| C3 — sites | **open** | a site is still a free-text label |
+| C4 — telling someone | **done** | webhooks, gated on the diff's own severity ladder |
+| C5 — GitOps | **open** | plats as reviewable files |
+| C6 — attestation | **open** | the chain proves integrity, not authorship |
+| D1–D5 — the standard and the ecosystem | **open** | after Horizon C succeeds |
+
+---
+
 ## 1. The invariant
 
 Everything below is downstream of one sentence:
@@ -65,6 +99,9 @@ Horizons are ordered by *risk*, not by excitement. A is boring and
 load-bearing. B is the bulk of the user-visible value. C is what turns a
 single-host tool into infrastructure. D is what turns an implementation into
 a standard.
+
+Section 0 above is the live status; the sections that follow are the
+reasoning behind each item and what is still to do about it.
 
 ---
 
