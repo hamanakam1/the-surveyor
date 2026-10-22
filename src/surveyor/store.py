@@ -521,6 +521,27 @@ class Ledger:
         self._atomic_write(path, markdown)
         return path
 
+    def changes(self) -> list[tuple[LedgerEntry, Path]]:
+        """The recorded changelogs, oldest first.
+
+        A changelog is written only when the structure moved, so this is the
+        ledger's own history: what changed, and when.
+        """
+
+        directory = self.root / "changes"
+        if not directory.is_dir():
+            return []
+        found: list[tuple[LedgerEntry, Path]] = []
+        for path in sorted(directory.glob("*.md")):
+            try:
+                seq = int(path.name.split("-", 1)[0])
+            except ValueError:
+                continue
+            entry = next((item for item in self.history() if item.seq == seq), None)
+            if entry is not None:
+                found.append((entry, path))
+        return found
+
     # -- verification -----------------------------------------------------
     def verify(self) -> VerifyReport:
         """Recompute the chain and every object digest."""

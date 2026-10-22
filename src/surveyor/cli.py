@@ -96,6 +96,13 @@ def build_parser() -> argparse.ArgumentParser:
     log.add_argument("--json", action="store_true")
     log.set_defaults(handler=_cmd_log)
 
+    history = subparsers.add_parser(
+        "history", parents=[common], help="what changed, and when it changed"
+    )
+    history.add_argument("-n", "--limit", type=int, default=20, help="changes to show")
+    history.add_argument("--json", action="store_true")
+    history.set_defaults(handler=_cmd_history)
+
     show = subparsers.add_parser("show", parents=[common], help="print a recorded plat")
     show.add_argument("ref", nargs="?", default="HEAD", help="seq, digest prefix, or file (default HEAD)")
     show.add_argument("--format", choices=("ascii", "markdown", "mermaid", "json"), default="ascii")
@@ -253,12 +260,22 @@ def _parse_ref(ref: str, ledger: Ledger) -> tuple[Topology | None, str]:
         if entry is None:
             return None, "empty ledger"
         return ledger.get(entry.digest), f"#{entry.seq}"
-    if ref == "HEAD~1":
-        head = ledger.head()
-        previous = ledger.previous_local(head)
-        if previous is None:
+    if ref.startswith("HEAD~"):
+        # HEAD~N is the Nth local survey before this one.
+        try:
+            offset = int(ref[5:])
+        except ValueError:
+            raise StoreError(f"cannot resolve {ref!r}") from None
+        if offset < 0:
+            raise StoreError(f"cannot resolve {ref!r}")
+        entry = ledger.head()
+        for _ in range(offset):
+            if entry is None:
+                return None, "before the first survey"
+            entry = ledger.previous_local(entry)
+        if entry is None:
             return None, "before the first survey"
-        return ledger.get(previous.digest), f"#{previous.seq}"
+        return ledger.get(entry.digest), f"#{entry.seq}"
     if ref.isdigit():
         entry = ledger.entry_at(int(ref))
         return ledger.get(entry.digest), f"#{entry.seq}"
@@ -504,6 +521,70 @@ def _cmd_log(args: argparse.Namespace) -> int:
     if head:
         print(f"\nHEAD #{head.seq} · {head.digest} · fingerprint {head.fingerprint[:19]}")
     return EXIT_OK
+
+
+def _cmd_history(args: argparse.Namespace) -> int:
+    """What changed, and when it changed."""
+
+    ledger = _resolve_ledger(args)
+    changes = ledger.changes()
+    if args.limit and args.limit > 0:
+        changes = changes[-args.limit :]
+
+    if not changes:
+        if args.json:
+            _emit_json([])
+        else:
+            print("no structural changes recorded; the map has not moved")
+        return EXIT_OK
+
+    if args.json:
+        _emit_json(
+            [
+                {
+                    "seq": entry.seq,
+                    "recorded_at": entry.recorded_at,
+                    "site": entry.site,
+                    "digest": entry.digest,
+                    "note": entry.note,
+                    "narrative": _narrative_of(path),
+                    "changelog": str(path),
+                }
+                for entry, path in changes
+            ]
+        )
+        return EXIT_OK
+
+    for entry, path in changes:
+        narrative = _narrative_of(path)
+        headline = narrative.splitlines()[0] if narrative else ""
+        print(f"#{entry.seq} · {entry.recorded_at} · {headline}")
+    return EXIT_OK
+
+
+def _narrative_of(path: Path) -> str:
+    """The opening paragraph of a changelog entry.
+
+    The changelog is written as a heading, a provenance line, then the
+    narrative, then the detail. The narrative is the part a reader wants
+    when they are asking *what happened*.
+    """
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    paragraphs: list[str] = []
+    for block in text.split("\n\n"):
+        stripped = block.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("**"):
+            # The provenance line: site, digests, timestamp.
+            continue
+        paragraphs.append(stripped)
+        break
+    return paragraphs[0] if paragraphs else ""
 
 
 def _cmd_show(args: argparse.Namespace) -> int:

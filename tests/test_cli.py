@@ -254,6 +254,42 @@ def test_import_refuses_a_broken_document(tmp_path, capsys):
     assert "missing-field" in capsys.readouterr().err
 
 
+def test_head_can_reach_back_through_the_local_surveys(tmp_path, capsys):
+    """``HEAD~N`` is the Nth local survey before this one."""
+
+    from surveyor.model import Node, Topology
+    from surveyor.store import Ledger
+
+    ledger = Ledger(tmp_path / "ledger")
+    for index in range(4):
+        topology = Topology(site="edge")
+        topology.add(Node("host:lab", "host", "lab"))
+        topology.add(Node(f"workload:w{index}", "workload", f"w{index}"))
+        ledger.commit(topology)
+
+    assert cli.main(["--store", str(tmp_path / "ledger"), "show", "HEAD~2", "--format", "json"]) == 0
+    document = json.loads(capsys.readouterr().out)
+    labels = {node["label"] for node in document["nodes"]}
+    assert labels == {"lab", "w1"}
+
+
+def test_history_says_what_changed(tmp_path, monkeypatch, capsys):
+    _stub_survey(monkeypatch, [build_topology()])
+    store = tmp_path / "ledger"
+    assert cli.main(["--store", str(store), "scan", "--quiet"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(["--store", str(store), "history"]) == 0
+    out = capsys.readouterr().out
+    assert "#0" in out
+    assert "theodolite" in out
+
+
+def test_history_on_a_quiet_ledger_says_so(tmp_path, capsys):
+    assert cli.main(["--store", str(tmp_path / "ledger"), "history"]) == 0
+    assert "has not moved" in capsys.readouterr().out
+
+
 def test_show_missing_ledger_is_an_error(tmp_path, capsys):
     assert cli.main(["--store", str(tmp_path / "none"), "show"]) == 1
     assert "no survey available" in capsys.readouterr().err

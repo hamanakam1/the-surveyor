@@ -63,6 +63,13 @@ surveyor scan
 #   unchanged · HEAD #3 · nothing to record
 ```
 
+And when it *does* change, the history says what changed and when:
+
+```bash
+surveyor history
+# #7 · 2026-10-22T09:14:02Z · The workload layer came online: ollama appeared on the plat.
+```
+
 ## The core loop
 
 ```text
@@ -96,6 +103,7 @@ surveyor scan
 | `surveyor show` | Print the newest plat as `ascii`, `markdown`, `mermaid`, or `json`. |
 | `surveyor diff` | Compare two plats; `--exit-code` returns 3 when structure changed. |
 | `surveyor log` | List recorded surveys. |
+| `surveyor history` | What changed, and when it changed. |
 | `surveyor verify` | Recompute the hash chain and every object digest. |
 | `surveyor daemon` | Survey every `interval` seconds; one entry per real change. |
 | `surveyor notify` | Send a test notification to the configured webhooks. |

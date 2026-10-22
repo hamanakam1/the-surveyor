@@ -8,6 +8,13 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **`surveyor history`**: what changed, and when it changed. The ledger
+  writes a changelog only when the structure moved, so the history is the
+  record itself rather than a log of surveys that found nothing. The
+  opening paragraph of each entry is the narrative the scribe wrote.
+- **`HEAD~N`**: a plat reference can now reach back through the local
+  surveys — `HEAD~2` is the second one before this one — so a change over
+  a week can be read in one diff.
 - **Containers beyond Docker.** The workloads scanner now finds the runtime
   it should use — Docker, then podman, then nerdctl — and reads whichever
   it finds. The two runtimes report containers in different shapes (one
