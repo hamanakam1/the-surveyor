@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from ..identity import host_id as local_host_id
 from ..model import KIND_WORKLOAD, LAYER_WORKLOAD, REL_RUNS, Edge, Node
 from ..probe import ProbeLog, run
+from ..util import slug
 from .base import ScanContext, ScanResult, register
 
 #: ``systemctl list-units --all --no-legend``:
@@ -58,7 +59,9 @@ class Unit:
 
     @property
     def id(self) -> str:
-        return f"workload:{self.runtime}:{self.name}"
+        # The name is slugged: a launchd label can hold capitals and a
+        # systemd unit can hold escapes, and a node id is a slug.
+        return f"workload:{self.runtime}:{slug(self.name)}"
 
     def to_facts(self) -> dict[str, object]:
         facts: dict[str, object] = {"runtime": self.runtime, "unit": self.name}

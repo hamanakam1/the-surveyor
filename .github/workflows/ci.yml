@@ -76,6 +76,10 @@ jobs:
           surveyor --store "$RUNNER_TEMP/ledger" scan --scanners host --no-save --json
           surveyor --store "$RUNNER_TEMP/ledger" scan --scanners host,network --output "$RUNNER_TEMP/plat.oet.json"
           surveyor validate "$RUNNER_TEMP/plat.oet.json"
+      - name: The whole survey must be a valid plat
+        run: |
+          surveyor --store "$RUNNER_TEMP/ledger" scan --output "$RUNNER_TEMP/full.oet.json"
+          surveyor validate "$RUNNER_TEMP/full.oet.json"
       - name: Verify ledger chain
         run: |
           surveyor --store "$RUNNER_TEMP/ledger" verify

@@ -220,6 +220,14 @@ All notable changes to The Surveyor. The format follows
 
 ### Fixed
 
+- **The tool produced plats its own validator rejected.** A launchd label
+  can hold capitals (`com.apple.AdobeDesktopService`) and a systemd unit can
+  hold escapes (`dev-disk-by\x2duuid-…`), and the scheduled-service scanner
+  put the raw name in the node id. A node id is a slug, and now it is one:
+  `workload:systemd:sshd-service`. The label keeps the name as the
+  operating system spells it. CI now validates a *whole* survey, not just
+  two layers, because the two-layer smoke test never reached the layer
+  that was broken.
 - **The gateway was not on its own subnet.** A peer seen on the wire got a
   `member_of` edge to the subnet it was seen on, and the gateway — which is
   on the same subnet — did not. The map said the router was reachable and

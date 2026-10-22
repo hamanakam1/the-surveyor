@@ -67,17 +67,17 @@ def test_systemd_units_are_services_the_host_runs():
     result = _run({"systemctl": SYSTEMCTL}, platform="linux")
     units = [node for node in result.nodes if node.kind == KIND_WORKLOAD]
     ids = {node.id for node in units}
-    assert "workload:systemd:sshd.service" in ids
-    assert "workload:systemd:nginx.service" in ids
-    assert "workload:systemd:cron.service" in ids
+    assert "workload:systemd:sshd-service" in ids
+    assert "workload:systemd:nginx-service" in ids
+    assert "workload:systemd:cron-service" in ids
 
-    nginx = next(node for node in units if node.id == "workload:systemd:nginx.service")
+    nginx = next(node for node in units if node.id == "workload:systemd:nginx-service")
     assert nginx.facts["description"] == "A high performance web server"
     assert nginx.telemetry["active_state"] == "active"
     assert nginx.telemetry["sub_state"] == "running"
 
     # An installed but stopped unit is still on the machine.
-    cron = next(node for node in units if node.id == "workload:systemd:cron.service")
+    cron = next(node for node in units if node.id == "workload:systemd:cron-service")
     assert cron.telemetry["active_state"] == "inactive"
 
 
@@ -104,8 +104,8 @@ def test_every_service_is_run_by_the_host():
 def test_launchd_daemons_are_read_from_the_system_domain():
     result = _run({"launchctl": LAUNCHD})
     ids = {node.id for node in result.nodes}
-    assert "workload:launchd:com.apple.lskdd" in ids
-    assert "workload:launchd:com.apple.tmp_cleaner" in ids
+    assert "workload:launchd:com-apple-lskdd" in ids
+    assert "workload:launchd:com-apple-tmp-cleaner" in ids
     # The endpoints block that follows must not be read as services.
     assert not any("dtcd" in node_id for node_id in ids)
 
@@ -122,11 +122,29 @@ def test_the_services_layer_is_exactly_these_nodes():
 
     result = _run({"systemctl": SYSTEMCTL}, platform="linux")
     assert {node.id for node in result.nodes} == {
-        "workload:systemd:sshd.service",
-        "workload:systemd:nginx.service",
-        "workload:systemd:cron.service",
-        "workload:systemd:docker.service",
+        "workload:systemd:sshd-service",
+        "workload:systemd:nginx-service",
+        "workload:systemd:cron-service",
+        "workload:systemd:docker-service",
     }
+
+
+def test_a_unit_id_is_always_a_slug():
+    """A launchd label can hold capitals and a systemd unit can hold escapes."""
+
+    import re
+
+    from surveyor.scanners.services import Unit
+
+    pattern = re.compile(r"^[a-z0-9_.:/@+-]+$")
+    for name in (
+        "com.apple.AdobeDesktopService",
+        "Adobe_Genuine_Software_Integrity_Service",
+        "dev-disk-by\\x2duuid-1234.device",
+        "systemd-user@1000.service",
+    ):
+        unit = Unit(name=name, runtime="launchd")
+        assert pattern.match(unit.id), unit.id
 
 
 def test_the_services_scanner_is_registered():
