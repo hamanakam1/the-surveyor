@@ -214,6 +214,7 @@ import — into a single map.
 
 ```bash
 surveyor fleet                       # the composed ASCII map
+surveyor fleet --site shed           # only the hosts of one site
 surveyor fleet --format mermaid       # a diagram GitHub renders
 surveyor fleet --json                # hosts, sites, and anything unresolved
 ```
@@ -225,6 +226,20 @@ without anyone having to say so. Where the composition cannot resolve
 something, it says so rather than guessing — a device two hosts name
 differently is reported as possibly being the same box, and a fact two
 plats disagree about is reported as a conflict.
+
+### Put the plats in a repository
+
+A plat is a file, and a repository of infrastructure is a directory of files
+that can be reviewed.
+
+```bash
+surveyor export HEAD --repo ~/infra
+# changed · /Users/you/infra/plats/shed/host-shed.oet.json
+```
+
+Nothing is committed and no network is touched: the tool writes a file and
+gets out of the way. What changed on the box is then a diff in the
+repository, which is how infrastructure is actually reviewed.
 
 
 ### Diff in CI

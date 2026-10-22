@@ -290,6 +290,46 @@ def test_history_on_a_quiet_ledger_says_so(tmp_path, capsys):
     assert "has not moved" in capsys.readouterr().out
 
 
+def test_export_into_a_repo_writes_one_file_per_site_and_host(tmp_path, monkeypatch, capsys):
+    """A tree of plats, so that what changed is a reviewable diff."""
+
+    _stub_survey(monkeypatch, [build_topology()])
+    store = tmp_path / "ledger"
+    repo = tmp_path / "repo"
+    assert cli.main(["--store", str(store), "scan", "--quiet"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(["--store", str(store), "export", "HEAD", "--repo", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "changed" in out
+
+    written = list(repo.glob("plats/*/*.oet.json"))
+    assert len(written) == 1
+    document = json.loads(written[0].read_text())
+    assert document["nodes"]
+
+    # A second export of the same plat changes nothing.
+    assert cli.main(["--store", str(store), "export", "HEAD", "--repo", str(repo)]) == 0
+    assert "unchanged" in capsys.readouterr().out
+
+
+def test_fleet_can_be_narrowed_to_one_site(tmp_path, monkeypatch, capsys):
+    plat = build_topology()
+    plat.site = "alpha"
+    _stub_survey(monkeypatch, [plat])
+    store = tmp_path / "ledger"
+    assert cli.main(["--store", str(store), "scan", "--quiet"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(["--store", str(store), "fleet", "--site", "alpha", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["hosts"]
+    assert set(payload["sites"].values()) == {"alpha"}
+
+    # A site with no surveys is an error, not an empty map.
+    assert cli.main(["--store", str(store), "fleet", "--site", "nowhere"]) == 1
+
+
 def test_show_missing_ledger_is_an_error(tmp_path, capsys):
     assert cli.main(["--store", str(tmp_path / "none"), "show"]) == 1
     assert "no survey available" in capsys.readouterr().err

@@ -8,6 +8,13 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **A plat can be written into a repository of infrastructure.**
+  `surveyor export --repo DIR` writes `plats/<site>/<host>.oet.json` and says
+  whether it changed, so that "what changed on this box" is a reviewable
+  diff rather than a paste. Nothing is committed and no network is touched:
+  the tool writes a file and gets out of the way.
+- **`surveyor fleet --site SITE`**: the composed map can be narrowed to one
+  site, which is what a site map is for.
 - **Accelerators.** On an edge box that runs models locally, the accelerator
   is often the most load-bearing fact there is, and it was invisible. The
   host scanner now asks `nvidia-smi` what is attached and records the count,

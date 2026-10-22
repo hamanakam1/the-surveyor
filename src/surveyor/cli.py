@@ -27,7 +27,7 @@ from .render import ascii_map, markdown_table, mermaid
 from .scanners.base import registry
 from .scribe import compose_changelog
 from .store import Ledger
-from .util import short_digest
+from .util import short_digest, slug
 from .validation import Problem, validate_document
 
 EXIT_OK = 0
@@ -169,6 +169,11 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("ref", nargs="?", default="HEAD", help="plat reference (default HEAD)")
     export.add_argument("--output", "--out", dest="output", help="write the document here")
     export.add_argument("--redact", action="store_true", help="mask identifiers first")
+    export.add_argument(
+        "--repo",
+        default=None,
+        help="write into a directory tree of plats, one file per site and host",
+    )
     export.set_defaults(handler=_cmd_export)
 
     importer = subparsers.add_parser(
@@ -183,6 +188,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     fleet = subparsers.add_parser(
         "fleet", help="compose every host in the ledger into one map"
+    )
+    fleet.add_argument(
+        "--site", default=None, help="only the hosts of this site"
     )
     fleet.add_argument(
         "--format",
@@ -794,6 +802,21 @@ def _cmd_export(args: argparse.Namespace) -> int:
         topology = redact_topology(topology, salt=ledger.salt)
 
     document = json.dumps(topology.to_dict(), indent=2, sort_keys=True)
+
+    if args.repo:
+        # A tree of plats, one file per site and host: the shape a
+        # repository of infrastructure wants, so that "what changed on this
+        # box" is a reviewable diff rather than a paste.
+        root = Path(args.repo).expanduser()
+        host = _host_of(topology) or "host"
+        path = root / "plats" / slug(topology.site) / f"{slug(host)}.oet.json"
+        previous = path.read_text(encoding="utf-8") if path.exists() else ""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(document + "\n", encoding="utf-8")
+        state = "unchanged" if previous.strip() == document.strip() else "changed"
+        print(f"{state} · {path}")
+        return EXIT_OK
+
     if args.output:
         _write_text(Path(args.output).expanduser(), document)
         print(f"wrote {args.output}")
@@ -871,8 +894,13 @@ def _cmd_fleet(args: argparse.Namespace) -> int:
     if not plats:
         raise StoreError(f"no surveys in {ledger.root}; run `surveyor scan` first")
 
+    if args.site:
+        plats = [plat for plat in plats if plat.site == args.site]
+        if not plats:
+            raise StoreError(f"no surveys for site {args.site!r}")
+
     sites = host_sites(plats)
-    composition = compose(plats, site=config.site)
+    composition = compose(plats, site=args.site or config.site)
     tag_hosts(composition.topology, sites)
 
     if args.json:
