@@ -1,0 +1,26 @@
+[Unit]
+Description=The Surveyor - empirical edge topology mapping
+Documentation=https://github.com/hamanakam1/the-surveyor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Create a dedicated, unprivileged account:
+#   sudo useradd --system --home /var/lib/surveyor --shell /usr/sbin/nologin surveyor
+User=surveyor
+Group=surveyor
+Environment=SURVEYOR_HOME=/var/lib/surveyor
+ExecStart=/usr/local/bin/surveyor daemon --interval 300
+Restart=on-failure
+RestartSec=30
+# The Surveyor only reads the machine and writes its own ledger.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/surveyor
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

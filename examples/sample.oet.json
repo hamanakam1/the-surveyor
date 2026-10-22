@@ -1,0 +1,443 @@
+{
+  "oet_version": "1.0",
+  "generator": {
+    "name": "the-surveyor",
+    "version": "1.0.0"
+  },
+  "site": "shed",
+  "generated_at": "2026-10-22T05:00:00Z",
+  "fingerprint": "sha256:0240edee9113bf2bb8faeca12268d8c639c8feefb7cafec42bfa1b071ff397f4",
+  "counts": {
+    "nodes": 12,
+    "edges": 11,
+    "by_layer": {
+      "power": 3,
+      "metal": 1,
+      "network": 3,
+      "workload": 5
+    },
+    "by_kind": {
+      "device": 1,
+      "host": 1,
+      "interface": 1,
+      "model": 1,
+      "network": 1,
+      "power_source": 3,
+      "service": 2,
+      "workload": 2
+    },
+    "by_relation": {
+      "attaches_to": 1,
+      "exposes": 2,
+      "hosts": 1,
+      "powers": 3,
+      "routes_via": 1,
+      "runs": 2,
+      "serves": 1
+    }
+  },
+  "nodes": [
+    {
+      "id": "device:192.168.7.1",
+      "kind": "device",
+      "layer": "network",
+      "label": "gateway 192.168.7.1",
+      "facts": {
+        "address": "192.168.7.1",
+        "role": "gateway"
+      },
+      "telemetry": {},
+      "tags": [
+        "gateway",
+        "unverified"
+      ],
+      "source": "network"
+    },
+    {
+      "id": "host:shed",
+      "kind": "host",
+      "layer": "metal",
+      "label": "shed (Raspberry Pi 5)",
+      "facts": {
+        "arch": "aarch64",
+        "cpu_cores": 4,
+        "cpu_model": "Cortex-A76",
+        "mem_total_gib": 8,
+        "model": "Raspberry Pi 5",
+        "os": "Debian GNU/Linux 13 (trixie)"
+      },
+      "telemetry": {
+        "load_1m": 0.31,
+        "mem_available_gib": 5.4,
+        "temperature_c": 48.2
+      },
+      "tags": [
+        "linux",
+        "site-host"
+      ],
+      "source": "host"
+    },
+    {
+      "id": "iface:shed:eth0",
+      "kind": "interface",
+      "layer": "network",
+      "label": "eth0 (ethernet)",
+      "facts": {
+        "address": "192.168.7.42",
+        "default_route": true,
+        "ipv4": [
+          "192.168.7.42/24"
+        ],
+        "kind": "ethernet",
+        "link_state": "up",
+        "name": "eth0"
+      },
+      "telemetry": {
+        "up": true
+      },
+      "tags": [
+        "ethernet",
+        "primary"
+      ],
+      "source": "network"
+    },
+    {
+      "id": "model:qwen2-5-3b",
+      "kind": "model",
+      "layer": "workload",
+      "label": "qwen2.5:3b",
+      "facts": {
+        "digest": "a80c4f17acd5",
+        "family": "qwen2",
+        "name": "qwen2.5:3b",
+        "parameter_size": "3.1B",
+        "quantization": "Q4_K_M",
+        "size_gib": 1.9
+      },
+      "telemetry": {},
+      "tags": [
+        "loaded",
+        "model",
+        "ollama"
+      ],
+      "source": "workloads"
+    },
+    {
+      "id": "network:192.168.7.0/24",
+      "kind": "network",
+      "layer": "network",
+      "label": "192.168.7.0/24",
+      "facts": {
+        "cidr": "192.168.7.0/24",
+        "family": "ipv4",
+        "private": true,
+        "size": 256
+      },
+      "telemetry": {},
+      "tags": [
+        "private",
+        "subnet"
+      ],
+      "source": "network"
+    },
+    {
+      "id": "power:ac",
+      "kind": "power_source",
+      "layer": "power",
+      "label": "AC mains",
+      "facts": {
+        "role": "ac",
+        "source": "utility"
+      },
+      "telemetry": {
+        "present": true
+      },
+      "tags": [
+        "utility"
+      ],
+      "source": "power"
+    },
+    {
+      "id": "power:battery:agm",
+      "kind": "power_source",
+      "layer": "power",
+      "label": "AGM battery bank",
+      "facts": {
+        "capacity_ah": 200,
+        "chemistry": "agm",
+        "role": "battery"
+      },
+      "telemetry": {
+        "charge_percent": 78,
+        "draw_w": 21.4
+      },
+      "tags": [
+        "battery"
+      ],
+      "source": "power"
+    },
+    {
+      "id": "power:solar",
+      "kind": "power_source",
+      "layer": "power",
+      "label": "Solar array",
+      "facts": {
+        "kw_peak": 1.2,
+        "mppt": "victron-100/30",
+        "role": "solar"
+      },
+      "telemetry": {
+        "yield_today_kwh": 0.9
+      },
+      "tags": [
+        "renewable"
+      ],
+      "source": "power"
+    },
+    {
+      "id": "service:tcp:11434",
+      "kind": "service",
+      "layer": "workload",
+      "label": "tcp/11434 (ollama)",
+      "facts": {
+        "bind": [
+          "0.0.0.0"
+        ],
+        "port": 11434,
+        "proto": "tcp"
+      },
+      "telemetry": {},
+      "tags": [
+        "exposed",
+        "listener"
+      ],
+      "source": "workloads"
+    },
+    {
+      "id": "service:tcp:8086",
+      "kind": "service",
+      "layer": "workload",
+      "label": "tcp/8086 (influxdb)",
+      "facts": {
+        "container_port": 8086,
+        "port": 8086,
+        "proto": "tcp",
+        "published": true
+      },
+      "telemetry": {},
+      "tags": [
+        "docker",
+        "published"
+      ],
+      "source": "workloads"
+    },
+    {
+      "id": "workload:docker:influxdb",
+      "kind": "workload",
+      "layer": "workload",
+      "label": "influxdb",
+      "facts": {
+        "container_id": "7c1f0a9b2d34",
+        "image": "influxdb:2.7",
+        "published_ports": [
+          "8086->8086/tcp"
+        ],
+        "runtime": "docker"
+      },
+      "telemetry": {
+        "status": "Up 6 days"
+      },
+      "tags": [
+        "container",
+        "database",
+        "docker"
+      ],
+      "source": "workloads"
+    },
+    {
+      "id": "workload:ollama",
+      "kind": "workload",
+      "layer": "workload",
+      "label": "ollama",
+      "facts": {
+        "endpoint": "http://127.0.0.1:11434",
+        "model_count": 1,
+        "models": [
+          "qwen2.5:3b"
+        ],
+        "runtime": "ollama"
+      },
+      "telemetry": {
+        "loaded": [
+          "qwen2.5:3b"
+        ]
+      },
+      "tags": [
+        "local-ai",
+        "model-server"
+      ],
+      "source": "workloads"
+    }
+  ],
+  "edges": [
+    {
+      "source": "host:shed",
+      "relation": "exposes",
+      "target": "service:tcp:11434",
+      "facts": {
+        "source": "listener"
+      }
+    },
+    {
+      "source": "host:shed",
+      "relation": "hosts",
+      "target": "iface:shed:eth0",
+      "facts": {
+        "role": "interface"
+      }
+    },
+    {
+      "source": "host:shed",
+      "relation": "routes_via",
+      "target": "device:192.168.7.1",
+      "facts": {
+        "role": "default"
+      }
+    },
+    {
+      "source": "host:shed",
+      "relation": "runs",
+      "target": "workload:docker:influxdb",
+      "facts": {
+        "runtime": "docker"
+      }
+    },
+    {
+      "source": "host:shed",
+      "relation": "runs",
+      "target": "workload:ollama",
+      "facts": {
+        "runtime": "ollama"
+      }
+    },
+    {
+      "source": "iface:shed:eth0",
+      "relation": "attaches_to",
+      "target": "network:192.168.7.0/24",
+      "facts": {
+        "address": "192.168.7.42"
+      }
+    },
+    {
+      "source": "power:ac",
+      "relation": "powers",
+      "target": "host:shed",
+      "facts": {
+        "kind": "ac",
+        "priority": 3
+      }
+    },
+    {
+      "source": "power:battery:agm",
+      "relation": "powers",
+      "target": "host:shed",
+      "facts": {
+        "kind": "battery",
+        "priority": 2
+      }
+    },
+    {
+      "source": "power:solar",
+      "relation": "powers",
+      "target": "host:shed",
+      "facts": {
+        "kind": "solar",
+        "priority": 1
+      }
+    },
+    {
+      "source": "workload:docker:influxdb",
+      "relation": "exposes",
+      "target": "service:tcp:8086",
+      "facts": {
+        "container_port": 8086
+      }
+    },
+    {
+      "source": "workload:ollama",
+      "relation": "serves",
+      "target": "model:qwen2-5-3b",
+      "facts": {}
+    }
+  ],
+  "observations": {
+    "platform": "linux/aarch64",
+    "hostname": "shed",
+    "duration_ms": 386,
+    "scanners": [
+      {
+        "scanner": "power",
+        "layer": "power",
+        "ok": true,
+        "nodes": 3,
+        "edges": 3,
+        "duration_ms": 41,
+        "notes": [],
+        "error": ""
+      },
+      {
+        "scanner": "host",
+        "layer": "metal",
+        "ok": true,
+        "nodes": 1,
+        "edges": 0,
+        "duration_ms": 58,
+        "notes": [],
+        "error": ""
+      },
+      {
+        "scanner": "network",
+        "layer": "network",
+        "ok": true,
+        "nodes": 3,
+        "edges": 3,
+        "duration_ms": 63,
+        "notes": [],
+        "error": ""
+      },
+      {
+        "scanner": "workloads",
+        "layer": "workload",
+        "ok": true,
+        "nodes": 5,
+        "edges": 5,
+        "duration_ms": 121,
+        "notes": [
+          "1 loopback-only listener(s) omitted"
+        ],
+        "error": ""
+      }
+    ],
+    "warnings": [],
+    "conflicts": [],
+    "layers": {
+      "power": {
+        "label": "Power",
+        "nodes": 3
+      },
+      "metal": {
+        "label": "Bare metal",
+        "nodes": 1
+      },
+      "network": {
+        "label": "Network",
+        "nodes": 3
+      },
+      "workload": {
+        "label": "Workloads",
+        "nodes": 5
+      }
+    },
+    "redacted": false
+  }
+}

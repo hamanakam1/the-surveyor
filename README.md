@@ -1,76 +1,295 @@
-# The Surveyor
-
 ```text
-SSSSS U   U RRRR   V   V EEEEE Y   Y  OOO  RRRR
-S     U   U R   R  V   V E     Y   Y O   O R   R
-SSSSS U   U RRRR   V   V EEE    Y Y  O   O RRRR
-    S U   U R  R    V V  E       Y   O   O R  R
-SSSSS  UUU  R   R     V   EEEEE   Y    OOO  R   R
+          T H E   S U R V E Y O R                     O E T   1 . 0
+          ───────────────────────────────────────────────────────────
+                .-"""""-.
+              .'   ___   '.                    ●───────●
+             /    /   \    \                  /         \
+            |    | === |    |  ─ ─ ─ ─ ─ ─▶  ●           ●
+             \    \___/    /                  \         /
+              '.    |    .'                    ●───────●
+                '-..|..-'
+                   |||                        plat no. 007
+            ______|||______                  not to scale
+           /   /       \   \
+          /   /         \   \
+         '___'           '___'
 ```
 
-**Autonomous systems analyst for the Open Edge Topology (OET) standard.**
+**Empirical infrastructure cartography for the edge.**
+*The map is not the machine. So we survey the machine.*
 
-> *Infrastructure is empirical. The Surveyor reverse-engineers the truth.*
+The Surveyor is a read-only systems analyst. It looks at the box it is running
+on — power, thermals, CPU, interfaces, subnets, containers, model servers,
+listening sockets — compiles what it finds into an
+[Open Edge Topology](#the-open-edge-topology-oet-standard) plat, diffs that plat
+against the last one, and writes down what actually changed.
 
-## Purpose
+No agents to install on every host. No cloud account. No dashboard to feed.
+One Python file tree, standard library only, and a ledger you can verify.
 
-The Surveyor abandons manual documentation in favor of autonomous discovery. It constantly polls the live physical environment, reverse-engineers the true state into a mathematically perfect OET map, uses a local LLM to translate changes into human-readable documentation, and commits everything to EdgeRecord.
+---
 
-## The Open Edge Topology (OET) Standard
+## Quickstart
 
-OET is an open-source, multi-dimensional JSON/YAML standard that maps the exact DAG of:
-- **Power** - Solar charge controllers, batteries, UPS, discharge rates
-- **Bare Metal** - CPUs, RAM, thermals, architecture
-- **Network** - UniFi topology, VLANs, switch ports, congestion
-- **Workloads** - Docker containers, images, ports, volumes, Ollama endpoints
-- **Relationships** - Edges connecting all of the above
+Works on macOS and Linux with Python 3.11+. Nothing to `pip install` but the
+package itself; there are **zero runtime dependencies**.
 
-## Core Loop
+```bash
+git clone https://github.com/hamanakam1/the-surveyor
+cd the-surveyor
 
-1. **Multi-Vector Discovery** - Poll power/thermals, bare metal, network, and workloads concurrently
-2. **Topological Compilation** - Aggregate into LiveTopologyGraph, diff against last known state
-3. **Autonomous Scribe** - Local LLM generates changelog entries for structural shifts
-4. **Cryptographic Commit** - Hash and push to EdgeRecord
+# no install required
+PYTHONPATH=src python3 -m surveyor scan --ascii
 
-## Design Principles
+# or install the `surveyor` entry point
+python3 -m pip install -e .
+surveyor scan --ascii
+```
 
-- **Empirical, not declarative** - Maps what *is*, not what we *want*
-- **Local-first** - All AI via Ollama, no cloud SDKs
-- **Idempotent** - Only acts on structural changes
-- **Strategy pattern** - Pluggable scanners for new hardware
-- **Read-only observer** - Never modifies infrastructure, only documents it
+```
+◈ surveying edge · site=edge store=~/.surveyor/ledger scanners=power,host,network,workloads
+  · power: 2 nodes, 2 edges in 26ms
+  · host: 1 nodes, 0 edges in 49ms
+  · network: 3 nodes, 3 edges in 59ms
+  · workloads: 14 nodes, 14 edges in 129ms
 
-## Status
+╭─ POWER · 2 ────────────────────────────────────────────────────────────────╮
+│ ◆ AC mains                                                         utility │
+│ ◆ Internal battery                                          battery · 100% │
+╰────────────────────────────────────────────────────────────────────────────╯
+            ▼
+╭─ BARE METAL · 1 ───────────────────────────────────────────────────────────╮
+│ ▣ Mac (Mac15,8)                          Apple M3 Max · 16 cores · 128 GiB │
+╰────────────────────────────────────────────────────────────────────────────╯
+            ▼
+╭─ NETWORK · 3 ──────────────────────────────────────────────────────────────╮
+│ ⬡ gateway 192.168.53.1                                                     │
+│ ◇ 192.168.53.0/24                                          192.168.53.0/24 │
+│ ⌁ en0 (wifi)                                         wifi · 192.168.53.209 │
+╰────────────────────────────────────────────────────────────────────────────╯
+            ▼
+╭─ WORKLOADS · 14 ───────────────────────────────────────────────────────────╮
+│ ■ ollama                                                            ollama │
+│ ✦ llama3.2:3b                                              3.2B · 1.88 GiB │
+│ ◦ tcp/5000 (ControlCe)                                       all interfaces │
+│ … 11 more                                                                  │
+╰────────────────────────────────────────────────────────────────────────────╯
 
-Early scaffolding - architecture design phase.
+20 nodes · 19 edges · 4/4 layers observed
+```
 
-## OET Schema Overview
+Run it again and it will check the same edges twice and record nothing, because
+the load average moving is not a change to the infrastructure:
+
+```bash
+surveyor scan
+# ◈ 20 nodes · 19 edges · 4/4 layers
+#   unchanged · HEAD #3 · nothing to record
+```
+
+## The core loop
+
+```text
+  discover            compile             compare            narrate            record
+ ┌─────────┐      ┌──────────────┐    ┌───────────┐     ┌────────────┐    ┌──────────────┐
+ │ power   │      │ merge nodes  │    │ structural│     │ facts by   │    │ content-     │
+ │ metal   │ ───▶ │ prune edges  │ ─▶ │ diff with │ ──▶ │ template,  │ ─▶ │ addressed    │
+ │ network │      │ fingerprint  │    │ severity  │     │ prose by   │    │ objects +    │
+ │ workloads│     │ observations │    │ classes   │     │ local LLM  │    │ hash chain   │
+ └─────────┘      └──────────────┘    └───────────┘     └────────────┘    └──────────────┘
+```
+
+1. **Discover** — scanners observe one dimension each, concurrently, with a
+   hard time budget. A scanner that fails or times out is recorded and the
+   survey continues.
+2. **Compile** — nodes merge by stable id, dangling edges are dropped with a
+   note, and the document is stamped with a structural fingerprint.
+3. **Compare** — changes are classified `critical`, `warning`, `notice`, or
+   `info`. Only the first three are structural.
+4. **Narrate** — the template writes the facts. Ollama may rewrite the opening
+   paragraph; it never touches the record.
+5. **Record** — canonical JSON objects named by their own SHA-256, and a journal
+   where each entry names its parent's digest.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `surveyor scan` | Survey now, record the plat, write a changelog if the shape moved. |
+| `surveyor scan --ascii` | Same, plus the layered ASCII map. |
+| `surveyor show` | Print the newest plat as `ascii`, `markdown`, `mermaid`, or `json`. |
+| `surveyor diff` | Compare two plats; `--exit-code` returns 3 when structure changed. |
+| `surveyor log` | List recorded surveys. |
+| `surveyor verify` | Recompute the hash chain and every object digest. |
+| `surveyor daemon` | Survey every `interval` seconds; one entry per real change. |
+| `surveyor validate FILE` | Check an OET document, including its fingerprint. |
+| `surveyor scanners` | List available scanners. |
+| `surveyor init` | Write a starter `config.toml`. |
+| `surveyor banner` | Print the instrument. |
+
+Useful flags: `--redact` (publishable plats), `--no-save` (look, don't record),
+`--scanners host,network` (narrow the survey), `--json` (script it),
+`--store PATH` (put the ledger somewhere else).
+
+### Publish a plat
+
+```bash
+surveyor show --format mermaid > topology.mmd     # GitHub renders this
+surveyor show --format markdown > TOPOLOGY.md     # tables, per layer
+surveyor scan --redact --output plat.oet.json      # masked identifiers
+surveyor validate plat.oet.json
+```
+
+`--redact` keeps the shape and drops the identifiers: MACs keep their vendor
+prefix, serials and SSIDs become stable digests, public IPv4 addresses lose
+their host bits, and private addresses survive because a topology map without
+them is a mood board.
+
+### Diff in CI
+
+```bash
+surveyor scan --quiet
+surveyor diff --exit-code    # 0 unchanged, 3 structural change, 1 error
+```
+
+## Why it is built this way
+
+**Facts are structural; telemetry is weather.** Every node carries two maps.
+`facts` describes the shape of the thing (image, CPU model, subnet, port) and is
+hashed into the fingerprint. `telemetry` describes the moment (load, charge,
+uptime) and never is. A five-minute daemon therefore writes entries when the
+infrastructure moves, not 288 times a day.
+
+**Idempotence is a property, not a promise.** Same fingerprint as HEAD means no
+journal entry, no changelog, no notification. `--force` exists for operators who
+want the heartbeat anyway.
+
+**Read-only means enforced.** Scanners may only execute an allowlist of
+introspection tools, as argument vectors, never through a shell, with a scrubbed
+environment (no `*_TOKEN`, `*_SECRET`, `*_PASSWORD`), empty stdin, and hard
+timeouts. Nothing in this repository writes outside its own ledger.
+
+**The record is verifiable.** Objects are stored as canonical JSON and named by
+their SHA-256. Journal entries form a hash chain. `surveyor verify` recomputes
+both and will call out a single flipped byte:
+
+```bash
+surveyor verify
+# ✓ chain intact · 14 entries · 12 objects
+```
+
+**Local-first AI, optionally.** The deterministic scribe needs no model. If you
+point `scribe = "ollama"` at a local Ollama, it rewrites the *opening paragraph*
+and nothing else; if the model is slow or absent, the template draft is used and
+the changelog says so.
+
+## The Open Edge Topology (OET) standard
+
+OET 1.0 is a small, empirical JSON document: four layers, nine node kinds, nine
+relations, and an explicit split between structure and telemetry.
 
 ```json
 {
-  "version": "1.0",
-  "timestamp": "2026-10-22T00:00:00Z",
-  "nodes": [...],
-  "power_sources": [...],
-  "networks": [...],
-  "workloads": [...],
-  "edges": [...]
+  "oet_version": "1.0",
+  "site": "shed",
+  "generated_at": "2026-10-22T05:00:00Z",
+  "fingerprint": "sha256:0240edee…",
+  "nodes": [
+    {
+      "id": "power:solar",
+      "kind": "power_source",
+      "layer": "power",
+      "label": "Solar array",
+      "facts": {"role": "solar", "kw_peak": 1.2},
+      "telemetry": {"yield_today_kwh": 0.9},
+      "tags": ["renewable"],
+      "source": "power"
+    }
+  ],
+  "edges": [
+    {"source": "power:solar", "relation": "powers", "target": "host:shed", "facts": {"priority": 1}}
+  ]
 }
 ```
 
-## Usage
+| Layer | Holds |
+| --- | --- |
+| `power` | utility feeds, batteries, UPS, solar — whatever the OS reports |
+| `metal` | the surveyed host: CPU, memory, thermals, board |
+| `network` | interfaces, IPv4 subnets, unverified devices such as the gateway |
+| `workload` | containers, model servers, models, listening services, volumes |
+
+Read the spec: [`docs/oet-1.0.md`](docs/oet-1.0.md) ·
+JSON Schema: [`schema/oet-1.0.schema.json`](schema/oet-1.0.schema.json) ·
+A complete plat: [`examples/sample.oet.json`](examples/sample.oet.json)
+
+## Configuration
+
+Every key is optional. See [`examples/surveyor.toml`](examples/surveyor.toml).
+
+```toml
+site = "edge-lab"
+store = "~/.surveyor/ledger"
+scanners = ["power", "host", "network", "workloads"]
+scanner_timeout = 12.0
+redact = false
+include_local_services = false   # loopback-only listeners are not edge topology
+interval = 300
+scribe = "template"              # or "ollama"
+ollama_model = "llama3.2:3b"
+```
+
+Resolution order: defaults → config file → `SURVEYOR_*` environment variables →
+CLI flags. `surveyor init` writes the file; `surveyor --config ./x.toml scan`
+uses it.
+
+### Run it forever
 
 ```bash
-# Run surveyor daemon
-surveyor daemon --config /etc/surveyor/config.yaml
+# systemd (Linux)
+sudo cp deploy/surveyor.service /etc/systemd/system/
+sudo systemctl enable --now surveyor
 
-# Generate one-time snapshot
-surveyor scan --output topology.oet.json
-
-# Diff against previous state
-surveyor diff topology.oet.json
+# launchd (macOS)
+cp deploy/com.hamanaka.surveyor.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.hamanaka.surveyor.plist
 ```
+
+The daemon holds a non-blocking lock, so a second copy exits instead of doubling
+the cadence.
+
+## Development
+
+```bash
+python3 -m pip install -e ".[dev]"
+make test        # 115 tests, well under a second, no network
+make demo        # survey into a throwaway ledger
+make scan        # survey this machine
+make validate    # validate the bundled sample and a fresh plat
+```
+
+Layout, failure model, and ledger internals:
+[`docs/architecture.md`](docs/architecture.md).
+
+```
+src/surveyor/
+├── probe.py        read-only command allowlist
+├── scanners/       power · host · network · workloads
+├── model.py        OET objects, identity, fingerprints
+├── compiler.py     fan-out, merge, observations
+├── differ.py       severity-classified structural diff
+├── scribe.py       deterministic changelog + optional local model
+├── store.py        content-addressed objects, hash-chained journal
+├── redact.py       publishable plats
+├── render.py       ASCII · Markdown · Mermaid
+├── daemon.py       schedule, locking, signals
+└── cli.py          commands, exit codes
+```
+
+**Status:** 1.0.0 — macOS and Linux are supported and exercised in CI.
+Windows is not a target: the scanners rely on `sysctl`, `/proc`, `sysfs`,
+`pmset`, and `lsof`.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

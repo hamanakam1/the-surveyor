@@ -1,0 +1,45 @@
+# The Surveyor configuration.
+# Every key is optional. Copy this file to ~/.surveyor/config.toml
+# (or point at it with `surveyor --config ./surveyor.toml ...`).
+
+# Name recorded with every plat. Use something you will recognise in a log.
+site = "edge-lab"
+
+# Where the ledger lives: objects, journal, changelogs, locks.
+store = "~/.surveyor/ledger"
+
+# Which scanners to run, and therefore which layers appear in the plat.
+# Available: power, host, network, workloads
+scanners = ["power", "host", "network", "workloads"]
+
+# Seconds a single scanner may take before the survey proceeds without it.
+scanner_timeout = 12.0
+
+# Mask serials, MACs, public addresses and SSIDs before recording.
+redact = false
+
+# Interfaces: virtual ones (tunnels, bridges) and loopback are omitted by default.
+include_virtual_interfaces = false
+include_loopback = false
+
+# Loopback-only listeners are not reachable from the edge, so they are omitted
+# by default. Set true to record every local socket.
+include_local_services = false
+
+# Upper bound on workloads, models, and services per plat.
+max_workloads = 200
+
+# Local model server. Only used when scribe = "ollama".
+ollama_endpoint = "http://127.0.0.1:11434"
+ollama_model = "llama3.2:3b"
+llm_timeout = 30.0
+
+# "template" writes deterministic prose with no network access.
+# "ollama" lets the local model rewrite the opening paragraph; facts stay fixed.
+scribe = "template"
+
+# Daemon cadence in seconds.
+interval = 300
+
+# quiet | info | debug
+log_level = "info"

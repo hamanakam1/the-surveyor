@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/hamanakam1/the-surveyor/main/schema/oet-1.0.schema.json",
+  "title": "Open Edge Topology (OET) 1.0",
+  "description": "A survey plat: the observed nodes, the observed edges, and the circumstances of observation. Facts are structural; telemetry is weather.",
+  "type": "object",
+  "required": ["oet_version", "site", "generated_at", "nodes", "edges"],
+  "additionalProperties": true,
+  "properties": {
+    "oet_version": {
+      "const": "1.0",
+      "description": "Schema major.minor. Consumers must reject unknown majors."
+    },
+    "generator": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["name"],
+      "additionalProperties": true
+    },
+    "site": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Operator-chosen name for the surveyed location."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp of the survey, second precision."
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Digest of the structural payload. Ignores timestamps, telemetry, and observation notes."
+    },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "nodes": { "type": "integer", "minimum": 0 },
+        "edges": { "type": "integer", "minimum": 0 },
+        "by_layer": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "by_kind": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "by_relation": { "type": "object", "additionalProperties": { "type": "integer" } }
+      },
+      "additionalProperties": false
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    },
+    "observations": {
+      "type": "object",
+      "description": "How the survey was taken: scanner outcomes, warnings, conflicts, duration. Not part of the fingerprint.",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "scalar": {
+      "type": ["string", "number", "boolean"]
+    },
+    "attributeMap": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/scalar" },
+          { "type": "array", "items": { "$ref": "#/$defs/scalar" } },
+          { "type": "object", "additionalProperties": { "$ref": "#/$defs/scalar" } }
+        ]
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "layer", "label", "facts", "telemetry"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.:/@+-]+$",
+          "description": "Stable, human-readable identifier. Same physical thing, same id, across surveys."
+        },
+        "kind": {
+          "enum": [
+            "host",
+            "power_source",
+            "interface",
+            "network",
+            "workload",
+            "model",
+            "service",
+            "volume",
+            "device"
+          ]
+        },
+        "layer": {
+          "enum": ["power", "metal", "network", "workload"]
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "facts": {
+          "$ref": "#/$defs/attributeMap",
+          "description": "Structural attributes. Changing one changes the fingerprint."
+        },
+        "telemetry": {
+          "$ref": "#/$defs/attributeMap",
+          "description": "Measurements that drift by design. Never part of the fingerprint."
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "source": {
+          "type": "string",
+          "description": "Scanner that observed this node."
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["source", "relation", "target", "facts"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Node id. Must exist in the nodes array."
+        },
+        "relation": {
+          "enum": [
+            "powers",
+            "hosts",
+            "runs",
+            "serves",
+            "attaches_to",
+            "routes_via",
+            "exposes",
+            "depends_on",
+            "member_of"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "description": "Node id. Must exist in the nodes array."
+        },
+        "facts": {
+          "$ref": "#/$defs/attributeMap"
+        }
+      }
+    }
+  }
+}

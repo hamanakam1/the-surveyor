@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hamanaka.surveyor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/surveyor</string>
+        <string>daemon</string>
+        <string>--interval</string>
+        <string>300</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SURVEYOR_HOME</key>
+        <string>/Users/REPLACE_ME/.surveyor</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/surveyor.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/surveyor.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>Nice</key>
+    <integer>10</integer>
+</dict>
+</plist>
