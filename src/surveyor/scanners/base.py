@@ -9,15 +9,15 @@ broken probe cannot take down the survey.
 from __future__ import annotations
 
 import difflib
+import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from ..config import Config
 from ..errors import ConfigError
 from ..model import Edge, Node
 from ..probe import ProbeLog
-import sys
 
 
 @dataclass(slots=True)
@@ -87,7 +87,7 @@ class ScannerSpec:
         started = time.perf_counter()
         try:
             result = self.fn(ctx)
-        except Exception as exc:  # noqa: BLE001 - scanners are isolated by design
+        except Exception as exc:
             elapsed = int((time.perf_counter() - started) * 1000)
             return ScanResult(
                 scanner=self.name,
@@ -128,7 +128,7 @@ def registry() -> dict[str, ScannerSpec]:
     the built-ins forever.
     """
 
-    global _BOOTSTRAPPED
+    global _BOOTSTRAPPED  # noqa: PLW0603 - module state, set once
     if not _BOOTSTRAPPED:
         _BOOTSTRAPPED = True
         from . import host, network, power, workloads  # noqa: F401

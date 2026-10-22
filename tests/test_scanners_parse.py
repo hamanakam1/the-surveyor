@@ -215,4 +215,4 @@ def test_bind_parsing_handles_ipv6_and_wildcards():
     assert _bind_of("*:8080") == ("*", 8080)
     assert _bind_of("127.0.0.1:11434") == ("127.0.0.1", 11434)
     assert _bind_of("[::1]:631") == ("::1", 631)
-    assert _bind_of("0.0.0.0:5000") == ("0.0.0.0", 5000)
+    assert _bind_of("0.0.0.0:5000") == ("0.0.0.0", 5000)  # noqa: S104 - a parsed bind address

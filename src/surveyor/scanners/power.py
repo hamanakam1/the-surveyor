@@ -77,7 +77,10 @@ def _parse_pmset_batt(text: str) -> tuple[str, list[dict[str, Any]]]:
         name, _, detail = raw.partition("\t")
         if not detail:
             _, _, detail = raw.partition(" ")
-        entry: dict[str, Any] = {"name": name.strip().lstrip("-").strip(), "detail": detail.strip()}
+        entry: dict[str, Any] = {
+            "name": name.strip().lstrip("-").split(" (id=")[0].strip(),
+            "detail": detail.strip(),
+        }
         percent = _PERCENT.search(detail)
         if percent:
             entry["charge_percent"] = int(percent.group("percent"))
@@ -85,7 +88,9 @@ def _parse_pmset_batt(text: str) -> tuple[str, list[dict[str, Any]]]:
         if remaining is not None:
             entry["minutes_remaining"] = remaining
         lowered = detail.lower()
-        for state in ("charging", "discharging", "charged", "finishing charge", "ac attached"):
+        # "discharging" contains "charging", so the more specific state has
+        # to be tested first or every discharging battery reads as charging.
+        for state in ("discharging", "finishing charge", "charged", "charging", "ac attached"):
             if state in lowered:
                 entry["state"] = state
                 break

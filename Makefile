@@ -1,10 +1,12 @@
-.PHONY: help test scan demo verify validate sample schema conformance screenshots clean
+.PHONY: help test lint types scan demo verify validate sample schema conformance screenshots clean
 
 PY ?= python3
 export PYTHONPATH := src
 
 help:
 	@echo "make test        run the suite (no dependencies beyond pytest)"
+	@echo "make lint        check style and obvious mistakes with ruff"
+	@echo "make types       check the type annotations with mypy"
 	@echo "make scan        survey this machine and print the ASCII plat"
 	@echo "make demo        survey into a throwaway ledger and narrate the first change"
 	@echo "make verify      check the local ledger's hash chain"
@@ -17,6 +19,12 @@ help:
 
 test:
 	$(PY) -m pytest
+
+lint:
+	ruff check src tests scripts
+
+types:
+	mypy src
 
 scan:
 	$(PY) -m surveyor scan --ascii

@@ -18,8 +18,9 @@ Run from the repo root::
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 TARGET = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "invalid"
 

@@ -25,9 +25,10 @@ human -- can react to the kind of fault rather than parse prose.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from .model import KINDS, LAYERS, RELATIONS, Topology
 
@@ -301,7 +302,7 @@ def validate_document(document: Mapping[str, Any]) -> list[Problem]:
             )
         else:
             try:
-                datetime.fromisoformat(generated.replace("Z", "+00:00"))
+                datetime.fromisoformat(generated)
             except ValueError:
                 problems.append(
                     Problem("bad-timestamp", "generated_at", "not a real timestamp")

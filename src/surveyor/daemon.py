@@ -16,9 +16,10 @@ import os
 import signal
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, TextIO
+from typing import TextIO
 
 from .compiler import survey
 from .config import Config
@@ -54,7 +55,9 @@ class InstanceLock:
 
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        handle = open(self.path, "a+", encoding="utf-8")
+        # The handle is held for the life of the process on purpose: an
+        # flock is released when its descriptor closes.
+        handle = open(self.path, "a+", encoding="utf-8")  # noqa: SIM115 - held on purpose
         if fcntl is not None:
             try:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)

@@ -211,20 +211,26 @@ version, or a kernel, and nothing catches it.
 
 **Problem.** There is one workflow (tests), and it does not build a release.
 
-**Work.**
+**Done in this release.**
 
-- `ruff` (lint + format) and `mypy --strict` on `src/`, wired into CI. The
-  codebase is already typed; this makes the annotations load-bearing.
-- Coverage measurement with a ratcheting floor (never lower than today).
-- A `release.yml`: tag-triggered build, `twine` publish to PyPI, signed
-  attestations, and a GitHub Release with the changelog section.
-- A `CHANGELOG` gate: the release notes must be generated from the changelog
-  file, and the version in `pyproject.toml` must match the changelog's
-  newest heading.
-- Fix the classifier drift (`Development Status :: 4 - Beta` on a 1.0.0
-  release).
-- `docs/roadmap.md` (this file) is reviewed each quarter and amended in
-  place, so it stays a record of decisions rather than a snapshot.
+- `ruff` (lint + import sorting) and `mypy` gate every change, with the
+  project's own rule set declared in `pyproject.toml`. `make lint` and
+  `make types` run them locally. The codebase was already fully annotated,
+  so the type check was nearly clean on the first run.
+- Coverage measurement with a **floor of 80%** including branch coverage,
+  enforced in CI. The floor is a ratchet: it may only go up.
+- A `release.yml`: a tag publishes to PyPI, after checking that the tag
+  and `pyproject.toml` agree, that the suite still passes, and that the
+  built distribution is well-formed.
+- A CI job that regenerates the schema from the model and fails if the
+  committed file is stale.
+- The `Development Status` classifier no longer contradicts the version.
+
+**Still to do.** Coverage is at 80% but unevenly spread: `power.py` and
+`util.py` were the weakest modules and now have dedicated suites, while
+`render.py` (79%) and `workloads.py` (66%) still carry the weight of
+untested branches. The floor is a floor, not a finish line.
+
 
 ### A6. Harden the probe boundary
 

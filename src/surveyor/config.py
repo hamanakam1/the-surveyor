@@ -10,9 +10,10 @@ from __future__ import annotations
 import difflib
 import json
 import os
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from .errors import ConfigError
 from .notify import FORMATS, THRESHOLDS, mask_url
@@ -181,9 +182,7 @@ class Config:
                     values[key] = tuple(str(part).strip() for part in value if str(part).strip())
                 else:
                     raise ConfigError("notify must be a list of webhook URLs")
-            elif key == "notify_on":
-                values[key] = str(value).strip().lower()
-            elif key == "notify_format":
+            elif key == "notify_on" or key == "notify_format":  # noqa: PLR1714
                 values[key] = str(value).strip().lower()
             elif key == "notify_timeout":
                 values[key] = float(value)
@@ -214,7 +213,7 @@ class Config:
 
     def with_env(self) -> Config:
         updates: dict[str, Any] = {}
-        mapping = {
+        mapping: dict[str, tuple[str, Callable[[str], Any]]] = {
             "SURVEYOR_SITE": ("site", str),
             "SURVEYOR_STORE": ("store", Path),
             "SURVEYOR_SCANNERS": ("scanners", lambda value: tuple(
@@ -234,7 +233,7 @@ class Config:
             if env_key in os.environ and os.environ[env_key] != "":
                 try:
                     updates[attr] = caster(os.environ[env_key])
-                except ValueError as exc:
+                except (TypeError, ValueError) as exc:
                     raise ConfigError(f"{env_key} is invalid: {exc}") from exc
         if os.environ.get("SURVEYOR_NOTIFY"):
             updates["notify"] = tuple(
@@ -315,7 +314,7 @@ def _read_config_file(path: Path) -> Mapping[str, Any]:
             raise ConfigError(f"{path}: invalid TOML: {exc}") from exc
     if suffix in {".yaml", ".yml"}:
         try:
-            import yaml  # type: ignore[import-not-found]
+            import yaml
         except ImportError as exc:
             raise ConfigError(
                 f"{path} is YAML; install the optional extra (pip install 'the-surveyor[yaml]') "
@@ -323,7 +322,7 @@ def _read_config_file(path: Path) -> Mapping[str, Any]:
             ) from exc
         try:
             loaded = yaml.safe_load(text)
-        except Exception as exc:  # noqa: BLE001 - third-party parser surface
+        except Exception as exc:
             raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
         if loaded is None:
             return {}

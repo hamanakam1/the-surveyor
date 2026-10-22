@@ -341,12 +341,17 @@ the cadence.
 
 ```bash
 python3 -m pip install -e ".[dev]"
-make test        # 121 tests, well under a second, no network
-make demo        # survey into a throwaway ledger
+make test        # 247 tests, well under a second, no network
+make lint        # ruff: style and obvious mistakes
+make types       # mypy: the type annotations
 make scan        # survey this machine
 make validate    # validate the bundled sample and a fresh plat
 make screenshots # regenerate docs/screenshots/*.png (needs pillow)
 ```
+
+CI runs the suite on macOS and Linux across Python 3.11–3.13, lints and
+type-checks the package, surveys a real runner, and refuses a schema that
+has drifted away from the model.
 
 Layout, failure model, and ledger internals:
 [`docs/architecture.md`](docs/architecture.md).

@@ -9,6 +9,28 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check src tests scripts
+      - name: Types
+        run: mypy src
+      - name: The committed schema matches the model
+        run: |
+          python scripts/make_schema.py
+          git diff --exit-code -- schema/
+
   test:
     name: test · ${{ matrix.os }} · py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -29,6 +51,8 @@ jobs:
           python -m pip install -e ".[dev]"
       - name: Unit tests
         run: python -m pytest
+      - name: Coverage floor
+        run: python -m pytest --cov=surveyor --cov-report=term-missing
       - name: Byte-compile
         run: python -m compileall -q src tests
 

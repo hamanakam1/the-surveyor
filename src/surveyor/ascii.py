@@ -11,6 +11,7 @@ carries, and the only joke the software needs to make about itself.
 
 from __future__ import annotations
 
+from typing import Any
 
 #: Twelve lines, 69 columns. Keep the left gutter at 10 columns and the
 #: wordmark on line 1 if you edit this.
@@ -61,7 +62,7 @@ def banner(*, color: bool = False) -> str:
     return "\n".join(lines)
 
 
-def supports_color(stream) -> bool:
+def supports_color(stream: Any) -> bool:
     """Honour NO_COLOR, then FORCE_COLOR, then ask the stream."""
 
     import os

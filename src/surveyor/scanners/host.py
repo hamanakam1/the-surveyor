@@ -18,7 +18,6 @@ from ..identity import host_id as local_host_id
 from ..identity import hostname as local_hostname
 from ..model import KIND_HOST, LAYER_METAL, Node
 from ..probe import ProbeLog, read_int, read_text, run
-
 from .base import ScanContext, ScanResult, register
 
 _THERMAL_NOTE_LIMIT = 200
@@ -193,7 +192,6 @@ _PSEUDO_FS = frozenset(
         "sysfs",
         "tmpfs",
         "auto_home",
-        "devfs",
         "fdescfs",
         "cgroup",
         "cgroup2",

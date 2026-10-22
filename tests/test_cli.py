@@ -4,12 +4,11 @@ import json
 
 import pytest
 
+from conftest import build_topology, change_fact
 from surveyor import cli
 from surveyor.compiler import CompilationReport
 from surveyor.config import Config
 from surveyor.model import Topology
-
-from conftest import build_topology, change_fact
 
 
 @pytest.fixture(autouse=True)
@@ -235,7 +234,7 @@ def test_redaction_flag_reaches_the_document(tmp_path, monkeypatch, capsys):
     cli.main(["--store", str(store), "scan", "--redact", "--no-save", "--output", str(output)])
     capsys.readouterr()
     document = json.loads(output.read_text())
-    host = [node for node in document["nodes"] if node["kind"] == "host"][0]
+    host = next(node for node in document["nodes"] if node["kind"] == "host")
     assert host["facts"]["mac"] == "f0:18:98:xx:xx:xx"
     assert document["observations"]["redacted"] is True
     assert cli.main(["validate", str(output)]) == 0

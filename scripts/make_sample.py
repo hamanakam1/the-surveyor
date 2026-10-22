@@ -55,7 +55,7 @@ nodes = [
          facts={"port": 8086, "proto": "tcp", "published": True, "container_port": 8086},
          tags=("published", "docker"), source="workloads"),
     Node("service:tcp:11434", "service", "tcp/11434 (ollama)",
-         facts={"port": 11434, "proto": "tcp", "bind": ["0.0.0.0"]},
+         facts={"port": 11434, "proto": "tcp", "bind": ["0.0.0.0"]},  # noqa: S104 - a sample plat
          tags=("listener", "exposed"), source="workloads"),
 ]
 for node in nodes:

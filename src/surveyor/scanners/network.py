@@ -255,19 +255,19 @@ def parse_ip_addr(addr_text: str, link_text: str = "") -> list[Interface]:
         address = match.group("addr")
         if match.group("family") == "inet":
             try:
-                parsed = ipaddress.IPv4Interface(address)
+                parsed4 = ipaddress.IPv4Interface(address)
             except ValueError:
                 continue
-            iface.ipv4.append((str(parsed.ip), parsed.network.prefixlen))
+            iface.ipv4.append((str(parsed4.ip), parsed4.network.prefixlen))
             continue
         # IPv6. The scope suffix (``%en0``) is a local routing detail, not
         # part of the address.
         bare = address.split("%", 1)[0]
         try:
-            parsed = ipaddress.IPv6Interface(bare)
+            parsed6 = ipaddress.IPv6Interface(bare)
         except ValueError:
             continue
-        iface.ipv6.append((str(parsed.ip), parsed.network.prefixlen))
+        iface.ipv6.append((str(parsed6.ip), parsed6.network.prefixlen))
     return list(found.values())
 
 
@@ -674,15 +674,15 @@ def scan_network(ctx: ScanContext) -> ScanResult:
         if peer.mac in own_macs:
             continue
         node_id = _device_id(peer.mac)
-        facts: dict[str, Any] = {"address": peer.address, "mac": peer.mac}
+        peer_facts: dict[str, Any] = {"address": peer.address, "mac": peer.mac}
         if peer.interface:
-            facts["interface"] = peer.interface
+            peer_facts["interface"] = peer.interface
         result.nodes.append(
             Node(
                 id=node_id,
                 kind=KIND_DEVICE,
                 label=peer.address,
-                facts=facts,
+                facts=peer_facts,
                 telemetry={"state": peer.state} if peer.state else {},
                 tags=("peer", "observed"),
                 source="network",

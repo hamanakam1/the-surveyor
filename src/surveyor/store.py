@@ -25,11 +25,12 @@ import json
 import os
 import secrets
 import tempfile
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any
 
 from .errors import StoreError
 from .model import Topology
@@ -95,7 +96,7 @@ def _structural_payload(document: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(slots=True)
@@ -242,7 +243,9 @@ class Ledger:
     @contextmanager
     def _locked(self) -> Iterator[None]:
         self.ensure()
-        handle = open(self.lock_file, "a+", encoding="utf-8")
+        # The handle is held for the life of the context on purpose: an
+        # flock is released when its descriptor closes.
+        handle = open(self.lock_file, "a+", encoding="utf-8")  # noqa: SIM115 - held on purpose
         try:
             if fcntl is not None:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
@@ -258,7 +261,7 @@ class Ledger:
     @staticmethod
     def _atomic_write(path: Path, payload: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        handle = tempfile.NamedTemporaryFile(
+        handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 - closed in the finally below
             "w", dir=path.parent, prefix=".tmp-", delete=False, encoding="utf-8"
         )
         try:
@@ -274,7 +277,7 @@ class Ledger:
         if not self.journal.exists():
             return []
         entries: list[LedgerEntry] = []
-        with open(self.journal, "r", encoding="utf-8") as handle:
+        with open(self.journal, encoding="utf-8") as handle:
             for number, raw in enumerate(handle, start=1):
                 line = raw.strip()
                 if not line:
@@ -401,12 +404,11 @@ class Ledger:
             return report
 
         parent = GENESIS
-        expected_seq = 0
         seen_digests: set[str] = set()
-        for entry in entries:
-            if entry.seq != expected_seq:
+        for index, entry in enumerate(entries):
+            if entry.seq != index:
                 report.problems.append(
-                    f"entry {entry.entry_digest[:15]}: seq {entry.seq} out of order (expected {expected_seq})"
+                    f"entry {entry.entry_digest[:15]}: seq {entry.seq} out of order (expected {index})"
                 )
                 report.ok = False
             if entry.parent != parent:
@@ -444,7 +446,6 @@ class Ledger:
                             report.ok = False
                 seen_digests.add(entry.digest)
             parent = entry.entry_digest
-            expected_seq += 1
 
         report.objects = len(seen_digests)
         head = self.head()

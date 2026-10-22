@@ -217,6 +217,8 @@ def run(argv: list[str] | tuple[str, ...], timeout: float = 8.0) -> Probe:
         )
 
     try:
+        # The argv is fixed, the shell is disabled and the program is
+        # allowlisted and resolved to an absolute path above.
         process = subprocess.Popen(  # noqa: S603 - fixed argv, shell disabled, allowlisted
             [resolved, *vector[1:]],
             stdout=subprocess.PIPE,
@@ -266,7 +268,7 @@ def read_text(path: str | Path, *, limit: int = 64_000) -> str | None:
     """
 
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        with open(path, encoding="utf-8", errors="replace") as handle:
             return handle.read(limit)
     except (OSError, ValueError):
         return None

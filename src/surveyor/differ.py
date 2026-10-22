@@ -11,8 +11,9 @@ tools become noise:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 from .model import (
     KIND_DEVICE,
@@ -21,9 +22,9 @@ from .model import (
     KIND_POWER_SOURCE,
     LAYER_LABELS,
     LAYERS,
-    RELATION_LABELS,
     REL_POWERS,
     REL_RUNS,
+    RELATION_LABELS,
     Topology,
 )
 from .util import clip
@@ -108,7 +109,7 @@ class DiffReport:
         return [change for change in self.changes if change.severity == severity]
 
     def counts(self) -> dict[str, int]:
-        counts = {severity: 0 for severity in SEVERITY_ORDER}
+        counts = dict.fromkeys(SEVERITY_ORDER, 0)
         for change in self.changes:
             counts[change.severity] = counts.get(change.severity, 0) + 1
         return counts

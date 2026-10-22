@@ -19,8 +19,9 @@ import json
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any
 from urllib.parse import urlparse
 
 from .differ import CRITICAL, INFO, NOTICE, WARNING, DiffReport
@@ -276,7 +277,7 @@ class Notifier:
         status: int | None = None
         for attempt in range(max(1, self.retries + 1)):
             attempts += 1
-            request = urllib.request.Request(
+            request = urllib.request.Request(  # noqa: S310 - operator-configured endpoint
                 endpoint,
                 data=body,
                 headers={

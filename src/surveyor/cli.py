@@ -10,8 +10,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from . import OET_VERSION, __version__
 from .ascii import BANNER, LEGEND, SHORT, TAGLINE, banner, supports_color
@@ -316,7 +317,6 @@ def _cmd_init(args: argparse.Namespace) -> int:
 def _cmd_scan(args: argparse.Namespace) -> int:
     config = _config(args)
     ledger = Ledger(config.store)
-    color = _color(args)
     quiet = args.quiet or args.json
 
     if not quiet:
@@ -497,14 +497,13 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     report = ledger.verify()
     if args.json:
         _emit_json(report.to_dict())
+    elif report.ok:
+        print(f"✓ chain intact · {report.entries} entries · {report.objects} objects")
+        print("  every object hashes to its name; every entry names its parent")
     else:
-        if report.ok:
-            print(f"✓ chain intact · {report.entries} entries · {report.objects} objects")
-            print(f"  every object hashes to its name; every entry names its parent")
-        else:
-            print("✗ ledger verification failed", file=sys.stderr)
-            for problem in report.problems:
-                print(f"  - {problem}", file=sys.stderr)
+        print("✗ ledger verification failed", file=sys.stderr)
+        for problem in report.problems:
+            print(f"  - {problem}", file=sys.stderr)
     return EXIT_OK if report.ok else EXIT_ERROR
 
 
@@ -711,4 +710,4 @@ if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
 
 
-__all__ = ["main", "build_parser", "BANNER", "SHORT", "default_store"]
+__all__ = ["BANNER", "SHORT", "build_parser", "default_store", "main"]

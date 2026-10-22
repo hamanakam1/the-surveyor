@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from conftest import change_fact, change_telemetry, without_node
 from surveyor.differ import CRITICAL, INFO, NOTICE, WARNING, diff_topologies, render_text
 from surveyor.model import Edge, Node, Topology
-
-from conftest import build_topology, change_fact, change_telemetry, without_node
 
 
 def test_identical_surveys_have_no_changes(topology):

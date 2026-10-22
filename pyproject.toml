@@ -24,7 +24,7 @@ dependencies = []
 
 [project.optional-dependencies]
 yaml = ["pyyaml>=6"]
-dev = ["pytest>=8", "pillow>=10"]
+dev = ["pytest>=8", "pillow>=10", "ruff>=0.6", "mypy>=1.11", "pytest-cov>=5"]
 
 [project.scripts]
 surveyor = "surveyor.cli:main"
@@ -44,3 +44,80 @@ packages = ["src/surveyor"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+
+# The floor is a ratchet, not a target: it may only go up.
+[tool.coverage.run]
+source = ["surveyor"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+]
+
+# The project states its own rules rather than inheriting whatever a
+# neighbouring checkout happens to configure.
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # import sorting
+  "UP",   # pyupgrade
+  "B",    # bugbear
+  "C4",   # comprehensions
+  "SIM",  # simplify
+  "RUF",  # ruff-specific
+  "PL",   # pylint
+  "PERF", # performance
+  "PIE",  # misc lints
+  "FURB", # refurb
+  "TID",  # tidy imports
+  "PT",   # pytest style
+  "S",    # bandit
+]
+ignore = [
+  # The package uses relative imports on purpose, and the scanners and
+  # their parsers read better as one flow than as a dozen functions.
+  "TID252",
+  "PLC0415",
+  # Style rules this codebase has never followed and that would add churn
+  # without catching a bug.
+  "E501",
+  "PERF401",
+  "SIM105",
+  "SIM108",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
+  "PLR2004",
+  "PT018",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106", "S311"]
+"scripts/*" = ["S603", "S607"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/surveyor"]
+strict = false
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+ignore_missing_imports = true

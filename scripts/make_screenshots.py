@@ -52,7 +52,7 @@ try:
 except ImportError:  # pragma: no cover - developer tooling
     raise SystemExit(
         "Pillow is required to render screenshots: python3 -m pip install pillow"
-    )
+    ) from None
 
 REPO = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = REPO / "docs" / "screenshots"
@@ -289,7 +289,9 @@ class FontBook:
 # rendering
 # --------------------------------------------------------------------------
 def _blend(colour: tuple[int, int, int], background: tuple[int, int, int], alpha: float) -> tuple[int, int, int]:
-    return tuple(round(b + (c - b) * alpha) for c, b in zip(colour, background))
+    return tuple(
+        round(b + (c - b) * alpha) for c, b in zip(colour, background, strict=True)
+    )
 
 
 def render_window(rows: list[list[Cell]], title: str, fonts: FontBook) -> Image.Image:
@@ -390,6 +392,7 @@ def run_cli(args: list[str], cwd: Path, redact: bool) -> str:
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
     return completed.stdout + completed.stderr
 

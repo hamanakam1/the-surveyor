@@ -320,7 +320,7 @@ def polish(draft: str, report: DiffReport, config: Config) -> str:
             "options": {"temperature": 0.2, "num_predict": 220},
         }
     ).encode("utf-8")
-    request = urllib.request.Request(
+    request = urllib.request.Request(  # noqa: S310 - configured local endpoint
         endpoint,
         data=body,
         headers={"Content-Type": "application/json", "User-Agent": "the-surveyor/1.0"},

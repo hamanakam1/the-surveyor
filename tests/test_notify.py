@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+from conftest import build_topology, change_fact, change_telemetry
 from surveyor.config import Config
 from surveyor.differ import diff_topologies
 from surveyor.errors import ConfigError
@@ -22,16 +23,14 @@ from surveyor.notify import (
     describe_endpoints,
     endpoint_style,
     mask_url,
+    sample_payload,
     should_notify,
     summary_text,
-    sample_payload,
 )
-
-from conftest import build_topology, change_fact, change_telemetry
 
 
 class _Handler(BaseHTTPRequestHandler):
-    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+    def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b"{}"
         try:
@@ -49,7 +48,7 @@ class _Handler(BaseHTTPRequestHandler):
         return
 
 
-@pytest.fixture()
+@pytest.fixture
 def webhook():
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     server.requests = []
@@ -292,8 +291,8 @@ def test_scan_notifies_on_a_structural_change(webhook, tmp_path, monkeypatch, ca
 
 
 def test_scan_notifies_on_a_critical_change(webhook, tmp_path, monkeypatch, capsys):
-    from surveyor import cli
     from conftest import without_node
+    from surveyor import cli
 
     server, url = webhook
     first = build_topology()

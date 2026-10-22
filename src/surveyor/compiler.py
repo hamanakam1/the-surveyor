@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import concurrent.futures
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Callable, Iterable
 
 from .config import Config
 from .identity import hostname
 from .model import LAYER_LABELS, LAYERS, Topology
-from .scanners.base import ScanContext, ScanResult, ScannerSpec, resolve
+from .scanners.base import ScanContext, ScannerSpec, ScanResult, resolve
 
 ProgressFn = Callable[[str], None]
 
@@ -60,7 +60,7 @@ def execute_scanners(
             spec = futures[future]
             try:
                 result = future.result()
-            except Exception as exc:  # noqa: BLE001 - a scanner must never kill the survey
+            except Exception as exc:
                 result = ScanResult(
                     scanner=spec.name,
                     layer=spec.layer,

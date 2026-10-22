@@ -96,7 +96,7 @@ def test_secret_environment_is_scrubbed(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_secret")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "shhh")
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA")
-    monkeypatch.setenv("SSH_AUTH_SOCK", "/tmp/agent.sock")
+    monkeypatch.setenv("SSH_AUTH_SOCK", "/tmp/agent.sock")  # noqa: S108 - a path in a test
     monkeypatch.setenv("NORMAL_SETTING", "visible")
     env = _scrubbed_env()
     assert "GITHUB_TOKEN" not in env

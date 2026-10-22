@@ -9,7 +9,8 @@ Three outputs, one model:
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from .model import (
     KIND_DEVICE,
@@ -23,8 +24,8 @@ from .model import (
     KIND_WORKLOAD,
     LAYER_LABELS,
     LAYERS,
-    Node,
     RELATION_LABELS,
+    Node,
     Topology,
 )
 from .util import clip
@@ -253,7 +254,7 @@ _SHAPES: dict[str, str] = {
 def mermaid(topology: Topology) -> str:
     """A Mermaid ``graph TD`` that GitHub renders inline."""
 
-    lines = ["%%{init: {'theme': 'neutral'}}%%", f"graph TD"]
+    lines = ["%%{init: {'theme': 'neutral'}}%%", "graph TD"]
     for layer in LAYERS:
         nodes = topology.nodes_in_layer(layer)
         if not nodes:

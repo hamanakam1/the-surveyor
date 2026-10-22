@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import build_topology, change_fact, change_telemetry, without_node
 from surveyor.config import Config
 from surveyor.differ import diff_topologies
 from surveyor.errors import LLMError
 from surveyor.model import Edge, Node, Topology
 from surveyor.scribe import compose_changelog, narrative, polish
-
-from conftest import build_topology, change_fact, change_telemetry, without_node
 
 
 def test_narrative_for_the_first_plat_reads_like_a_surveyor():

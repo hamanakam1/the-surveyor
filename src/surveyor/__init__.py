@@ -10,4 +10,4 @@ from __future__ import annotations
 __version__ = "1.0.0"
 OET_VERSION = "1.0"
 
-__all__ = ["__version__", "OET_VERSION"]
+__all__ = ["OET_VERSION", "__version__"]

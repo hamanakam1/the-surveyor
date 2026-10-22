@@ -1,0 +1,72 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag to publish, e.g. v1.1.0"
+        required: true
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    name: build and publish
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+
+      - name: The tag and the package agree
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          tag = "${GITHUB_REF_NAME}" if "${GITHUB_REF_NAME}" else "${INPUT_TAG}"
+          version = re.search(
+              r'^version\s*=\s*"([^"]+)"',
+              pathlib.Path("pyproject.toml").read_text(),
+              re.MULTILINE,
+          ).group(1)
+          expected = tag[1:] if tag.startswith("v") else tag
+          if version != expected:
+              sys.exit(f"pyproject says {version}, the tag says {expected}")
+          print(f"publishing {version}")
+          PY
+
+      - name: The suite still passes
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest
+
+      - name: Build
+        run: python -m build
+
+      - name: Check the distribution
+        run: twine check dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body_path: CHANGELOG.md

@@ -15,9 +15,10 @@ document?" and addresses an immutable object in the ledger.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterable, Iterator, Mapping, Sequence
+from datetime import UTC, datetime
+from typing import Any
 
 from . import OET_VERSION, __version__
 from .errors import SchemaError
@@ -329,7 +330,7 @@ class Topology:
 
     def __post_init__(self) -> None:
         if not self.generated_at:
-            self.generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            self.generated_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         self.edges = self._dedupe_edges(self.edges)
 
     # -- construction -----------------------------------------------------
@@ -418,7 +419,7 @@ class Topology:
 
     # -- reporting --------------------------------------------------------
     def counts(self) -> dict[str, Any]:
-        by_layer = {layer: 0 for layer in LAYERS}
+        by_layer = dict.fromkeys(LAYERS, 0)
         by_kind: dict[str, int] = {}
         for node in self.nodes.values():
             by_layer[node.layer] = by_layer.get(node.layer, 0) + 1
@@ -469,7 +470,7 @@ class Topology:
         if not isinstance(data, Mapping):
             raise SchemaError("OET document must be a JSON object")
         version = str(data.get("oet_version") or data.get("version") or "")
-        if version.split(".")[0] != SCHEMA_VERSION.split(".")[0]:
+        if version.split(".", maxsplit=1)[0] != SCHEMA_VERSION.split(".")[0]:
             raise SchemaError(
                 f"unsupported OET version {version!r}; this build speaks OET {SCHEMA_VERSION}"
             )
@@ -483,12 +484,12 @@ class Topology:
         )
         seen: set[str] = set()
         for raw in raw_nodes:
-            node = Node.from_dict(raw)  # type: ignore[arg-type]
+            node = Node.from_dict(raw)
             if node.id in seen:
                 raise SchemaError(f"duplicate node id {node.id!r}")
             seen.add(node.id)
             topology.nodes[node.id] = node
         for raw in raw_edges:
-            topology.edges.append(Edge.from_dict(raw))  # type: ignore[arg-type]
+            topology.edges.append(Edge.from_dict(raw))
         topology.edges = topology._dedupe_edges(topology.edges)
         return topology

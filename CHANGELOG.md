@@ -8,6 +8,15 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **Lint and type checking in CI.** `ruff` and `mypy` now gate every
+  change, with the project's own rule set declared in `pyproject.toml`
+  rather than inherited from whatever a neighbouring checkout happens to
+  configure. `make lint` and `make types` run them locally.
+- **A coverage floor.** 80% with branch coverage, enforced in CI. The floor
+  is a ratchet: it may only go up.
+- **A release workflow.** A tag publishes to PyPI, after checking that the
+  tag and `pyproject.toml` agree, that the suite still passes, and that the
+  built distribution is well-formed.
 - **Storage.** A box whose disk filled up looked unchanged: the host scanner
   reported CPU, memory and thermals, and nothing about where the data lived.
   The scanner now reads `df -P -k` and records the number of filesystems,
@@ -123,6 +132,10 @@ All notable changes to The Surveyor. The format follows
 
 ### Fixed
 
+- **A discharging battery was reported as charging.** The power parser
+  tested `"charging" in detail` before `"discharging" in detail`, and
+  *discharging* contains *charging* — so every battery running down the
+  hill said it was charging. The more specific state is now tested first.
 - **Long names could collide into one node.** `util.slug()` truncated at
   eighty characters with nothing to distinguish the result, so two container
   names that shared their first eighty characters produced the same node id

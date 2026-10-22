@@ -158,7 +158,9 @@ def scan_docker(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
 
 
 def _http_json(url: str, timeout: float) -> Any:
-    request = urllib.request.Request(url, headers={"User-Agent": "the-surveyor/1.0"})
+    request = urllib.request.Request(  # noqa: S310 - loopback endpoint
+        url, headers={"User-Agent": "the-surveyor/1.0"}
+    )
     with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - loopback endpoint
         body = response.read(2_000_000)
     return json.loads(body.decode("utf-8", errors="replace"))

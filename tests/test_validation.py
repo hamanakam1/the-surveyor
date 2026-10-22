@@ -35,7 +35,7 @@ def test_the_conformance_corpus_is_not_empty():
 
 
 @pytest.mark.parametrize(
-    "expected,document",
+    ("expected", "document"),
     _cases(),
     ids=[name for name, _ in _cases()],
 )

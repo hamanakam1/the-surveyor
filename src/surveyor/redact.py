@@ -25,8 +25,9 @@ from __future__ import annotations
 import ipaddress
 import re
 import secrets
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 from .model import Edge, Node, Topology
 from .sensitivity import (
@@ -66,8 +67,8 @@ _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _HOME_PATH = re.compile(r"/(?:Users|home)/([A-Za-z0-9._-]+)")
 
 #: The boundary of a token: a name embedded in a longer word is not a match.
-_TOKEN_EDGE = r"(?<![A-Za-z0-9._-])"
-_TOKEN_END = r"(?![A-Za-z0-9._-])"
+_NAME_EDGE = r"(?<![A-Za-z0-9._-])"
+_NAME_END = r"(?![A-Za-z0-9._-])"
 
 
 # --------------------------------------------------------------------------
@@ -80,7 +81,7 @@ def mask_mac(value: str) -> str:
         text = match.group(1)
         separator = "-" if "-" in text else ":"
         octets = text.lower().split(separator)
-        return separator.join(octets[:3] + ["xx", "xx", "xx"])
+        return separator.join([*octets[:3], "xx", "xx", "xx"])
 
     return _MAC.sub(replace, value)
 
@@ -101,7 +102,7 @@ def mask_ip(value: str) -> str:
         if not is_public(candidate):
             return candidate
         octets = candidate.split(".")
-        return ".".join(octets[:2] + ["x", "x"])
+        return ".".join([*octets[:2], "x", "x"])
 
     text = _IPV4.sub(replace, value)
 
@@ -170,7 +171,7 @@ class Aliaser:
         # that happens to be a prefix of it.
         alternatives = sorted(self._table, key=len, reverse=True)
         joined = "|".join(re.escape(item) for item in alternatives)
-        self._pattern = re.compile(f"{_TOKEN_EDGE}({joined}){_TOKEN_END}")
+        self._pattern = re.compile(f"{_NAME_EDGE}({joined}){_NAME_END}")
         return self._pattern
 
     def substitute(self, text: str) -> str:
@@ -307,7 +308,7 @@ def redact_topology(topology: Topology, *, salt: str = "") -> Topology:
 
     # Register every collected name before anything is rewritten, so that a
     # name found in a fact also disappears from the ids and labels.
-    for category, values in collector.values.items():
+    for values in collector.values.values():
         for value in values:
             aliaser.alias(value)
 

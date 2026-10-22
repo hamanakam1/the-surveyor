@@ -129,12 +129,12 @@ def change_telemetry(topology: Topology, node_id: str, key: str, value: Any) -> 
     return clone
 
 
-@pytest.fixture()
+@pytest.fixture
 def topology() -> Topology:
     return build_topology()
 
 
-@pytest.fixture()
+@pytest.fixture
 def tmp_ledger(tmp_path):
     from surveyor.store import Ledger
 
