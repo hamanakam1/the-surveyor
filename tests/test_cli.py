@@ -26,14 +26,14 @@ def isolated_home(tmp_path, monkeypatch):
 def _stub_survey(monkeypatch, topologies):
     queue = list(topologies)
 
-    def fake_survey(config, *, site=None, progress=None):
+    def fake_survey(config, *, site=None, progress=None, salt=""):
         from surveyor.redact import redact_topology
 
         if progress:
             progress("stub scanner: 1 node")
         topology = queue.pop(0) if len(queue) > 1 else queue[0]
         if config.redact:
-            topology = redact_topology(topology)
+            topology = redact_topology(topology, salt=salt)
         return CompilationReport(topology=topology)
 
     monkeypatch.setattr(cli, "survey", fake_survey)
@@ -97,7 +97,7 @@ def test_scan_can_emit_an_oet_document(tmp_path, monkeypatch, capsys):
 def test_scan_reports_scanner_failures(tmp_path, monkeypatch, capsys):
     store = tmp_path / "ledger"
 
-    def failing_survey(config, *, site=None, progress=None):
+    def failing_survey(config, *, site=None, progress=None, salt=""):
         from surveyor.scanners.base import ScanResult
 
         topology = build_topology()

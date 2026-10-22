@@ -22,17 +22,55 @@ That promise is enforced in code, not just documented:
 ## Data handling
 
 A plat can contain hostnames, MAC addresses, serial numbers, IP addresses,
-interface names, container images, and the names of local models and listening
-processes. Treat an unredacted plat as **internal** data.
+interface names, container images, container names, model names, and the names
+of local models and listening processes. Treat an unredacted plat as
+**internal** data.
 
-Use `--redact` (or `redact = true`) before publishing a plat. Redaction masks
-MAC host bits, aliases serials and SSIDs with SHA-256 prefixes, and truncates
-public IPv4 addresses. Private addresses are preserved because the map is
-useless without them; review the output before publishing anyway.
+Use `--redact` (or `redact = true`) before publishing a plat. Redaction is
+driven by a declared inventory of identifiers
+(`src/surveyor/sensitivity.py`), not by guesswork, and it covers:
+
+- hostnames — in facts, in labels, in observations, **and in node ids**,
+- container names, compose project and service names,
+- local model names, image registry owners, container ids, model digests,
+- serial numbers, UUIDs, machine ids, board ids, Wi-Fi SSIDs,
+- listener process names,
+- MAC addresses (vendor prefix kept) and globally routable IPv4 and IPv6
+  addresses (host bits removed).
+
+Private, loopback and link-local addresses are preserved because the map is
+useless without them. Hardware model, CPU model, ports, versions and counts
+are preserved because they describe the class of machine rather than the
+machine.
+
+### Aliases are keyed
+
+An alias is a digest of the name **and a secret key** stored in `salt` beside
+the ledger, readable only by its owner. This matters: an unkeyed digest of a
+low-entropy value such as a hostname or a container name can be reversed by
+hashing a word list, which would make redaction a speed bump rather than a
+protection. With a key, the same name always produces the same alias within
+one ledger — so redacting twice does not churn the map — and a different alias
+in every other ledger, so two redacted plats cannot be correlated by their
+aliases.
+
+Because redaction rewrites node ids (a hostname is part of a node id), do
+**not** cross-reference a redacted plat and an unredacted plat by node id.
+The mapping is deterministic but it is not the identity.
+
+### Audit before publishing
+
+`surveyor redact FILE --audit` reports every identifier that survived
+redaction: a declared identifier that failed to be removed (a defect), and a
+value that merely looks like an identifier — an email address, a home
+directory, a long hex digest. The second kind is a question for the operator.
+The command exits non-zero when it finds anything, so it can gate a publish.
 
 Ledger objects are stored unencrypted. Protect the directory with filesystem
 permissions; the bundled systemd unit runs as an unprivileged user with a
-read-only view of the rest of the system.
+read-only view of the rest of the system. The `salt` file is created with
+owner read/write only.
+
 
 ## Optional local model
 

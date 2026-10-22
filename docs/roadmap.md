@@ -98,43 +98,57 @@ truncated one.
 
 ### A2. Redaction that is actually safe
 
-**Problem.** `--redact` is advertised as producing "a plat safe to publish".
-It does not. Auditing `redact.py` against what the scanners actually collect
+**Problem.** `--redact` was advertised as producing "a plat safe to publish".
+It did not. Auditing `redact.py` against what the scanners actually collect
 found these leaks:
 
 | Leaked | Where |
 | --- | --- |
 | **Hostname** | node ids (`host:studio`, `iface:studio:en0`), `facts["hostname"]`, `observations["hostname"]`, and every label that embeds it |
-| **Container names** | node ids (`workload:docker:web`), labels, `facts["compose_project"]` |
-| **Model names** | node ids (`model:llama3.2:3b`), labels, `facts["image"]` |
-| **Edge facts** | `redact.py` copies edges with a shallow copy — `{"workload": "web"}` survives untouched |
-| **MAC addresses** | the regex only matches colon form; dash form is missed |
+| **Container names** | node ids (`workload:docker:web`), labels, `facts["compose_project"]`, and the `workload` fact of every service they publish |
+| **Model names** | node ids (`model:llama3.2:3b`), labels |
+| **Process names** | `facts["processes"]`, and the service label that embeds them |
+| **Edge facts** | `redact.py` copied edges with a shallow copy — `{"workload": "web"}` survived untouched |
+| **MAC addresses** | the regex only matched colon form; dash form was missed |
 | **IPv6** | never masked, because it is never parsed either |
 | **Container ids, Ollama digests** | 12 hex characters of a stable identifier |
-| **Aliases** | `alias_secret` is unsalted SHA-256 truncated to 40 bits — brute-forceable for low-entropy values like `ssid` |
+| **Aliases** | `alias_secret` was unsalted SHA-256 truncated to 40 bits — brute-forceable for low-entropy values like `ssid` |
 
-**Work.** Redaction needs a policy that is *derived from the data*, not from a
-hand-written key list:
+**Done in this release.**
 
-1. **A declared sensitivity per fact key**, owned by the scanner that emits
-   it, rather than a global list in `redact.py`. A scanner that emits
-   `facts["container_id"]` also declares that key as an identifier.
-2. **Identifier-shaped node ids get aliased**, not just identifier-shaped
-   values. The id is the part that leaks the most and the part that is
-   currently invisible to the redactor.
-3. **Redact edges as thoroughly as nodes.** Today they are not redacted at all.
-4. **Hash with a keyed digest** (per-store salt), so aliases are stable
-   within a ledger but not across ledgers or brute-forceable.
-5. **Add IPv6** (see B1) and the dash-form MAC, once both are parsed.
-6. **A redaction audit command**: `surveyor redact --audit plat.json` that
-   reports every value it *could not* classify, so an operator sees the
-   residue before publishing.
+1. **A declared inventory of identifiers** (`sensitivity.py`) — what counts as
+   an identifier is stated in one reviewable place instead of guessed by the
+   redactor. The policy covers fact keys, kind-specific keys (`name` is an
+   interface name on an interface and a model name on a model), and the
+   name-bearing component of a node id.
+2. **Names are aliased throughout the document** — in facts, in labels, in
+   observations, and in **node ids**, with edges rewritten to match so a
+   redacted plat has no dangling edges and the same graph.
+3. **Edge facts are redacted** like node facts.
+4. **Aliases are keyed** — `sha256(salt + slug(value))` against a 256-bit
+   secret in `salt` beside the ledger. Stable within a ledger, different in
+   every other one, and not reversible with a word list. Deriving the alias
+   from the *slug* means the raw name (`qwen3.8:32b`) and the name in the
+   node id (`qwen3-8-32b`) collapse to one alias rather than two.
+5. **Dash-form MACs and globally routable IPv6** are masked. Private
+   addresses are still preserved, by design.
+6. **An audit command**: `surveyor redact FILE --audit` reports every
+   identifier that survived, and exits non-zero so it can gate a publish in
+   CI. It distinguishes a declared identifier that failed to be removed (a
+   bug) from a value that merely looks like one — an email address, a home
+   directory, a long hex digest — which is a question for the operator.
 
-**Exit criteria.** A test that takes a plat containing every identifier shape
-the scanners can currently emit and asserts that the redacted plat contains
-none of them, except the ones the policy explicitly preserves (private
-addresses, by design). The audit command reports zero unclassified values for
-the standard plats.
+**Deliberately kept.** Hardware model and CPU model describe the *class* of
+machine, not the machine; a map that cannot say what kind of box it is
+describing is not a map. Ports, versions and counts are the shape. Private
+addresses are the map.
+
+**Still to do.** The inventory is a single table rather than being declared
+by the scanner that emits each identifier. That is deliberate for now — a
+scanner-declared registry would make redaction depend on import order — but
+it should move into the scanner interface once the plugin story (D4) exists
+and the registry can be loaded deterministically.
+
 
 ### A3. The schema becomes executable
 

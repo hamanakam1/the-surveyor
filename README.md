@@ -99,6 +99,7 @@ surveyor scan
 | `surveyor verify` | Recompute the hash chain and every object digest. |
 | `surveyor daemon` | Survey every `interval` seconds; one entry per real change. |
 | `surveyor validate FILE` | Check an OET document, including its fingerprint. |
+| `surveyor redact FILE` | Mask a plat's identifiers; `--audit` reports what survived. |
 | `surveyor scanners` | List available scanners. |
 | `surveyor init` | Write a starter `config.toml`. |
 | `surveyor banner` | Print the instrument. |
@@ -114,12 +115,28 @@ surveyor show --format mermaid > topology.mmd     # GitHub renders this
 surveyor show --format markdown > TOPOLOGY.md     # tables, per layer
 surveyor scan --redact --output plat.oet.json      # masked identifiers
 surveyor validate plat.oet.json
+surveyor redact plat.oet.json --audit              # did anything survive?
 ```
 
-`--redact` keeps the shape and drops the identifiers: MACs keep their vendor
-prefix, serials and SSIDs become stable digests, public IPv4 addresses lose
-their host bits, and private addresses survive because a topology map without
-them is a mood board.
+`--redact` keeps the shape and drops the identifiers: hostnames, container
+names, model names and process names become stable aliases; MACs keep their
+vendor prefix; serials and SSIDs are digested; public IPv4 and IPv6 addresses
+lose their host bits. Private addresses survive because a topology map
+without them is a mood board. Hardware model, CPU model, ports and versions
+survive too — those describe the *class* of machine, not the machine.
+
+The aliases are **keyed**: the same name always produces the same alias
+within one ledger, so redacting twice does not churn the map, and a different
+alias in every other ledger, so two redacted plats cannot be correlated. The
+key lives in `salt` beside the ledger it protects, readable only by its owner.
+An unkeyed digest of a hostname can be reversed with a word list; a keyed one
+cannot.
+
+`surveyor redact --audit` reports anything that survived — a declared
+identifier that failed to be removed, or a value that merely looks like one
+(an email address, a home directory, a long hex digest). It exits non-zero,
+so it can be used in CI.
+
 
 ### Diff in CI
 

@@ -7,6 +7,7 @@ Layout::
       journal.jsonl               append-only chain of survey entries
       HEAD                        pointer to the newest entry
       lock                        advisory lock serialising writers
+      salt                        the ledger's redaction key, owner-only
 
 Three properties matter:
 
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -193,11 +195,39 @@ class Ledger:
         self.journal = self.root / "journal.jsonl"
         self.head_file = self.root / "HEAD"
         self.lock_file = self.root / "lock"
+        self.salt_file = self.root / "salt"
 
     # -- plumbing ---------------------------------------------------------
     def ensure(self) -> Ledger:
         self.objects.mkdir(parents=True, exist_ok=True)
         return self
+
+    @property
+    def salt(self) -> str:
+        """The ledger's redaction key.
+
+        Aliases in a redacted plat are digests of a name *and this key*. Two
+        names that are the same produce the same alias everywhere in this
+        ledger, so redacting a plat twice does not churn the map; but an
+        unkeyed digest of a hostname can be brute-forced from a word list,
+        and that would make redaction a speed bump rather than a protection.
+
+        The key never leaves the ledger directory and is created with owner
+        read/write only.
+        """
+
+        with self._locked():
+            if self.salt_file.exists():
+                text = self.salt_file.read_text(encoding="utf-8").strip()
+                if text:
+                    return text
+            value = secrets.token_hex(32)
+            self._atomic_write(self.salt_file, value + "\n")
+            try:
+                os.chmod(self.salt_file, 0o600)
+            except OSError:  # pragma: no cover - exotic filesystems
+                pass
+            return value
 
     @property
     def exists(self) -> bool:

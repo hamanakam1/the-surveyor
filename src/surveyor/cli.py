@@ -119,6 +119,15 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--json", action="store_true")
     validate.set_defaults(handler=_cmd_validate)
 
+    redact = subparsers.add_parser(
+        "redact", help="mask identifiers in a plat, and audit what survived"
+    )
+    redact.add_argument("path", nargs="?", default="HEAD", help="OET file or plat reference (default HEAD)")
+    redact.add_argument("--output", "--out", dest="output", help="write the redacted plat here")
+    redact.add_argument("--audit", action="store_true", help="report identifiers that survived")
+    redact.add_argument("--json", action="store_true")
+    redact.set_defaults(handler=_cmd_redact)
+
     art = subparsers.add_parser("banner", help="print the banner")
     art.set_defaults(handler=_cmd_banner)
 
@@ -150,6 +159,18 @@ def _color(args: argparse.Namespace) -> bool:
 
 def _resolve_ledger(args: argparse.Namespace) -> Ledger:
     return Ledger(_config(args).store)
+
+
+def _salt_for(config: Config, ledger: Ledger) -> str:
+    """The redaction key, but only when redaction is actually happening.
+
+    Reading it creates the key file, so a scan that never redacts should not
+    leave one behind.
+    """
+
+    if not config.redact:
+        return ""
+    return ledger.salt
 
 
 def _parse_ref(ref: str, ledger: Ledger) -> tuple[Topology | None, str]:
@@ -272,7 +293,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         if not quiet:
             print(f"  · {message}")
 
-    report = survey(config, progress=progress)
+    report = survey(config, progress=progress, salt=_salt_for(config, ledger))
     topology = report.topology
 
     if report.failures and not args.json:
@@ -452,6 +473,67 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
             f"◈ stopped after {stats.cycles} cycle(s) · {stats.recorded} recorded · "
             f"{stats.unchanged} unchanged · {stats.structural_changes} structural change(s)"
         )
+    return EXIT_OK
+
+
+def _cmd_redact(args: argparse.Namespace) -> int:
+    """Mask a plat's identifiers and report whatever survived."""
+
+    from .redact import Aliaser, audit, masked_summary, redact_topology
+
+    config = _config(args)
+    ledger = Ledger(config.store)
+    try:
+        topology, label = _parse_ref(args.path, ledger)
+    except StoreError:
+        path = Path(args.path).expanduser()
+        if not path.exists():
+            raise
+        topology = Topology.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        label = path.name
+    if topology is None:
+        raise StoreError(f"no survey available at {args.path}; run `surveyor scan` first")
+
+    salt = ledger.salt
+    aliaser = Aliaser(salt)
+    redacted = redact_topology(topology, salt=salt)
+    findings = audit(topology, redacted, aliaser)
+    summary = masked_summary(topology, aliaser)
+
+    if args.output:
+        _write_text(Path(args.output).expanduser(), json.dumps(redacted.to_dict(), indent=2, sort_keys=True))
+    elif not args.audit:
+        print(json.dumps(redacted.to_dict(), indent=2, sort_keys=True))
+
+    if args.audit:
+        if args.json:
+            _emit_json(
+                {
+                    "plat": label,
+                    "masked": summary,
+                    "keyed": bool(salt),
+                    "findings": [finding.to_dict() for finding in findings],
+                    "ok": not findings,
+                }
+            )
+        else:
+            print(f"◈ redaction audit · {label}")
+            for category, count in sorted(summary.items()):
+                print(f"  masked {category:<16} {count}")
+            if not findings:
+                print("  ✓ no identifier survived redaction")
+            else:
+                print(f"  ! {len(findings)} value(s) survived:")
+                for finding in findings[:40]:
+                    print(f"    - {finding.kind}: {finding.value!r} in {finding.where}")
+                if len(findings) > 40:
+                    print(f"    … {len(findings) - 40} more")
+        if not args.output and args.json:
+            return EXIT_OK if not findings else EXIT_ERROR
+        return EXIT_OK if not findings else EXIT_ERROR
+
+    if args.output:
+        print(f"wrote {args.output}")
     return EXIT_OK
 
 

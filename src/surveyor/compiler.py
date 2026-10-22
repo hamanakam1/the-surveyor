@@ -149,6 +149,7 @@ def survey(
     *,
     site: str | None = None,
     progress: ProgressFn | None = None,
+    salt: str = "",
 ) -> CompilationReport:
     """Full survey: execute scanners, then compile."""
 
@@ -159,7 +160,7 @@ def survey(
     if config.redact:
         from .redact import redact_topology
 
-        topology = redact_topology(topology)
+        topology = redact_topology(topology, salt=salt)
     return CompilationReport(topology=topology, results=results)
 
 

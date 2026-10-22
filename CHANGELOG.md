@@ -17,6 +17,43 @@ All notable changes to The Surveyor. The format follows
   changelog, and the ledger, rendered from live CLI output by
   `scripts/make_screenshots.py`. `make screenshots` regenerates the set;
   nothing in it is hand-drawn.
+- **`surveyor redact FILE [--audit]`**: mask a plat's identifiers, and report
+  every identifier that survived. The audit distinguishes a declared
+  identifier that failed to be removed (a defect) from a value that merely
+  looks like one — an email address, a home directory, a long hex digest — and
+  exits non-zero so it can gate a publish in CI.
+- **A declared inventory of identifiers** (`sensitivity.py`): what counts as
+  an identifier is now stated in one reviewable place rather than guessed by
+  the redactor, and a scanner that starts emitting a new kind of identifier
+  adds a line there.
+- **Keyed redaction aliases**: a 256-bit secret in `salt` beside the ledger.
+  The same name always produces the same alias within one ledger, so redacting
+  twice does not churn the map, and a different alias in every other ledger,
+  so two redacted plats cannot be correlated.
+
+### Security
+
+- **`--redact` no longer leaks the identifiers it claimed to remove.** The
+  old redactor masked MAC addresses and serials and left everything else in
+  the clear. A redacted plat still carried:
+  - the **hostname**, in node ids (`host:studio`), in labels, in
+    `facts["hostname"]`, and in `observations["hostname"]`;
+  - **container names**, in node ids, labels, and the `workload` fact of every
+    service they publish;
+  - **model names**, in node ids and labels;
+  - **listener process names**, in service facts and labels;
+  - **every edge fact**, which were copied without redaction at all;
+  - MAC addresses in the dash form, and IPv6, which was never parsed.
+
+  Redaction now aliases names throughout the document — including node ids,
+  with edges rewritten to match, so a redacted plat has no dangling edges and
+  the same graph — masks dash-form MACs, and truncates globally routable IPv6
+  addresses. The policy is documented in `docs/oet-1.0.md` §8 and in
+  `SECURITY.md`.
+- **Aliases are keyed.** An unkeyed digest of a hostname or container name can
+  be reversed by hashing a word list, which made the old redaction a speed
+  bump rather than a protection. Aliases are now
+  `sha256(salt + slug(value))` against a per-ledger secret.
 
 ### Fixed
 
