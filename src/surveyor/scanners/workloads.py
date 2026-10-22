@@ -13,6 +13,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+from dataclasses import dataclass, field
 from typing import Any
 
 from ..identity import host_id as local_host_id
@@ -75,7 +76,7 @@ def _parse_labels(raw: str) -> dict[str, str]:
 
 
 def _mounts(raw: Any) -> list[dict[str, Any]]:
-    """The mounts of a container, as docker reports them."""
+    """The mounts of a container, as the runtime reports them."""
 
     if not isinstance(raw, list):
         return []
@@ -85,6 +86,122 @@ def _mounts(raw: Any) -> list[dict[str, Any]]:
             continue
         found.append({key: str(value) for key, value in item.items() if value is not None})
     return found
+
+
+#: Container runtimes, in the order they are tried.
+_RUNTIMES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("docker", ("docker", "ps", "--no-trunc", "--format", "{{json .}}")),
+    ("podman", ("podman", "ps", "--no-trunc", "--format", "json")),
+    ("nerdctl", ("nerdctl", "ps", "--no-trunc", "--format", "{{json .}}")),
+)
+
+
+@dataclass(slots=True)
+class Container:
+    """One container, whichever runtime reported it."""
+
+    name: str
+    image: str = ""
+    identifier: str = ""
+    state: str = ""
+    status: str = ""
+    created: str = ""
+    running_for: str = ""
+    networks: str = ""
+    labels: dict[str, str] = field(default_factory=dict)
+    ports: list[tuple[int, int, str]] = field(default_factory=list)
+    mounts: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _parse_runtime_output(text: str) -> list[dict[str, Any]]:
+    """Read a runtime's output, whatever shape it comes in.
+
+    Docker and nerdctl print one JSON object per line; podman prints one
+    JSON array.
+    """
+
+    stripped = text.strip()
+    if not stripped:
+        return []
+    if stripped.startswith("["):
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return []
+        return [item for item in parsed if isinstance(item, dict)]
+    payloads: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            payloads.append(parsed)
+    return payloads
+
+
+def _first(value: Any) -> str:
+    """The first name, whether the runtime gave a string or a list."""
+
+    if isinstance(value, list):
+        return str(value[0]) if value else ""
+    return str(value or "")
+
+
+def _label_map(value: Any) -> dict[str, str]:
+    """Docker gives labels as a string; podman gives them as a mapping."""
+
+    if isinstance(value, dict):
+        return {str(key): str(item) for key, item in value.items()}
+    return _parse_labels(str(value or ""))
+
+
+def _port_list(value: Any) -> list[tuple[int, int, str]]:
+    """Published ports, from either a docker string or a podman list."""
+
+    if isinstance(value, list):
+        ports: list[tuple[int, int, str]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            published = to_int(item.get("host_port"))
+            container = to_int(item.get("container_port"))
+            if published and container:
+                ports.append((published, container, str(item.get("protocol") or "tcp")))
+        return ports
+    return _published_ports(str(value or ""))
+
+
+def _container(payload: dict[str, Any], runtime: str) -> Container | None:
+    """Normalise one container from either runtime's JSON shape."""
+
+    name = _first(payload.get("Names") or payload.get("Name"))[:120]
+    identifier = str(payload.get("ID") or payload.get("Id") or "")
+    if not name:
+        name = identifier[:120]
+    if not name:
+        return None
+    networks = payload.get("Networks")
+    if isinstance(networks, list):
+        network_text = ",".join(str(item) for item in networks)
+    else:
+        network_text = str(networks or "")
+    return Container(
+        name=name,
+        image=str(payload.get("Image") or ""),
+        identifier=identifier,
+        state=str(payload.get("State") or "").strip(),
+        status=str(payload.get("Status") or "").strip(),
+        created=str(payload.get("CreatedAt") or "").strip(),
+        running_for=str(payload.get("RunningFor") or "").strip(),
+        networks=",".join(part.strip() for part in network_text.split(",") if part.strip()),
+        labels=_label_map(payload.get("Labels")),
+        ports=_port_list(payload.get("Ports")),
+        mounts=_mounts(payload.get("Mounts")),
+    )
 
 
 def _volume_node(mount: dict[str, Any]) -> Node | None:
@@ -129,55 +246,67 @@ def _volume_node(mount: dict[str, Any]) -> Node | None:
 
 
 def scan_docker(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
-    probe = log.add(run(["docker", "ps", "--no-trunc", "--format", "{{json .}}"], timeout=min(ctx.timeout, 8.0)))
-    if not probe.ok:
-        reason = probe.reason or "unavailable"
-        detail = probe.stderr.strip().splitlines()
-        suffix = f" ({detail[0][:120]})" if detail else ""
-        result.warn(f"docker: {reason}{suffix}; container layer not observed")
+    """The containers running on this machine, whichever runtime runs them.
+
+    Docker first because it is what most machines have; podman and nerdctl
+    because a box that dropped Docker for one of them is not unusual, and a
+    box running nothing but Docker is not the only shape of an edge.
+    """
+
+    runtime = ""
+    payloads: list[dict[str, Any]] = []
+    attempts: list[str] = []
+    # The runtime probes get their own log: a box with no container runtime
+    # should hear about it once, not once per runtime tried.
+    runtime_log = ProbeLog()
+    for name, argv in _RUNTIMES:
+        probe = runtime_log.add(run(list(argv), timeout=min(ctx.timeout, 8.0)))
+        if not probe.ok:
+            lines = probe.stderr.strip().splitlines()
+            reason = probe.reason or "unavailable"
+            attempts.append(f"{name}: {reason}" + (f" ({lines[0][:80]})" if lines else ""))
+            continue
+        payloads = _parse_runtime_output(probe.stdout)
+        runtime = name
+        break
+
+    if not runtime:
+        summary = "; ".join(attempts) or "no runtime found"
+        result.warn(f"container runtime: {summary}; container layer not observed")
         return
 
     host = local_host_id()
     count = 0
-    for raw in probe.lines():
+    for payload in payloads:
         if count >= ctx.config.max_workloads:
-            result.warn(f"docker: stopped at max_workloads={ctx.config.max_workloads}")
+            result.warn(f"{runtime}: stopped at max_workloads={ctx.config.max_workloads}")
             break
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            result.warn("docker: emitted a line that was not JSON; skipped")
-            continue
-        if not isinstance(payload, dict):
-            continue
-        name = str(payload.get("Names") or payload.get("ID") or "")[:120]
-        if not name:
+        container = _container(payload, runtime)
+        if container is None:
             continue
         count += 1
-        labels = _parse_labels(str(payload.get("Labels") or ""))
-        networks = [part.strip() for part in str(payload.get("Networks") or "").split(",") if part.strip()]
-        ports = _published_ports(str(payload.get("Ports") or ""))
-        workload_id = f"workload:docker:{slug(name)}"
+        name = container.name
+        labels = container.labels
+        ports = container.ports
+        workload_id = f"workload:{runtime}:{slug(name)}"
 
         facts: dict[str, Any] = {
-            "runtime": "docker",
-            "image": str(payload.get("Image") or "unknown"),
-            "network_mode": ",".join(networks) or "default",
+            "runtime": runtime,
+            "image": container.image or "unknown",
+            "network_mode": container.networks or "default",
         }
-        container_id = str(payload.get("ID") or "")
-        if container_id:
-            facts["container_id"] = container_id[:12]
-        created = str(payload.get("CreatedAt") or "")
-        if created:
-            facts["created_at"] = created
+        if container.identifier:
+            facts["container_id"] = container.identifier[:12]
+        if container.created:
+            facts["created_at"] = container.created
         if labels.get("com.docker.compose.project"):
             facts["compose_project"] = labels["com.docker.compose.project"]
         if labels.get("com.docker.compose.service"):
             facts["compose_service"] = labels["com.docker.compose.service"]
         if ports:
-            facts["published_ports"] = [f"{published}->{container}/{proto}" for published, container, proto in ports]
+            facts["published_ports"] = [f"{published}->{container_port}/{proto}" for published, container_port, proto in ports]
 
-        for mount in _mounts(payload.get("Mounts")):
+        for mount in container.mounts:
             volume = _volume_node(mount)
             if volume is None:
                 continue
@@ -186,11 +315,15 @@ def scan_docker(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
                 Edge(workload_id, REL_ATTACHES_TO, volume.id, {"destination": volume.facts.get("destination", "")})
             )
 
-        telemetry: dict[str, Any] = {}
-        for source, target in (("State", "state"), ("Status", "status"), ("RunningFor", "running_for")):
-            value = str(payload.get(source) or "").strip()
-            if value:
-                telemetry[target] = value
+        telemetry: dict[str, Any] = {
+            key: value
+            for key, value in (
+                ("state", container.state),
+                ("status", container.status),
+                ("running_for", container.running_for),
+            )
+            if value
+        }
 
         result.nodes.append(
             Node(
@@ -199,11 +332,11 @@ def scan_docker(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
                 label=name,
                 facts=facts,
                 telemetry=telemetry,
-                tags=("container", "docker") + (("compose",) if "compose_project" in facts else ()),
+                tags=("container", runtime) + (("compose",) if "compose_project" in facts else ()),
                 source="workloads",
             )
         )
-        result.edges.append(Edge(host, REL_RUNS, workload_id, {"runtime": "docker"}))
+        result.edges.append(Edge(host, REL_RUNS, workload_id, {"runtime": runtime}))
 
         for published, container_port, proto in ports:
             facts_for_service = {
@@ -216,7 +349,7 @@ def scan_docker(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
                 proto,
                 f"{proto}/{published} ({name})",
                 facts_for_service,
-                ("published", "docker"),
+                ("published", runtime),
             )
             result.nodes.append(service)
             result.edges.append(Edge(workload_id, REL_EXPOSES, service.id, {"container_port": container_port}))

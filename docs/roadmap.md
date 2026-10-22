@@ -351,6 +351,29 @@ rules, and use `--all` so a stopped container is recorded with its state as
 telemetry. A container that stopped is a structural event worth a line in the
 changelog.
 
+**Done in this release.** The scanner finds the runtime it should use —
+Docker, then podman, then nerdctl — and reads whichever it finds. The two
+runtimes report containers in different shapes, and both are normalised
+into the same record:
+
+| | Docker | Podman |
+| --- | --- | --- |
+| Output | one JSON object per line | one JSON array |
+| Names | a string | a list |
+| Labels | a `k=v,k=v` string | a mapping |
+| Ports | `"0.0.0.0:8080->80/tcp"` | a list of objects |
+
+A box with no container runtime hears about it **once**, listing what was
+tried and why each failed, rather than once per runtime.
+
+**Still to do.** Stopped containers are still invisible: `docker ps` without
+`--all` only lists what is running. A container that stopped is a
+structural event worth a line in the changelog, but recording every
+stopped container on every box would put hundreds of dormant nodes in every
+plat. The honest answer is probably to record only the ones that were
+running and are now not — which means comparing against the previous plat,
+which the ledger has.
+
 ### B4. Schedulers and the things that run on a timer
 
 **Problem.** `launchctl` and `netstat` are allowlisted and unused. A service

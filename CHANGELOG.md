@@ -8,6 +8,13 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **Containers beyond Docker.** The workloads scanner now finds the runtime
+  it should use — Docker, then podman, then nerdctl — and reads whichever
+  it finds. The two runtimes report containers in different shapes (one
+  JSON object per line versus one JSON array; labels as a string versus a
+  mapping; ports as a string versus a list), and both are normalised into
+  the same record. A box that dropped Docker for podman is not unusual, and
+  a box running nothing but Docker is not the only shape of an edge.
 - **Container volumes.** `volume:` was a node kind in the model and in the
   spec, and no scanner emitted it. A container's mounts are now recorded:
   a named volume is `volume:pgdata`, and a bind mount is named by where it

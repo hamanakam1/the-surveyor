@@ -113,6 +113,70 @@ def test_a_mount_with_nothing_to_name_is_not_a_node():
     assert _volume_node({"Type": "volume"}) is None
 
 
+def test_docker_output_is_one_object_per_line():
+    from surveyor.scanners.workloads import _parse_runtime_output
+
+    payloads = _parse_runtime_output(
+        '{"Names":"web","ID":"abc123"}\n{"Names":"api","ID":"def456"}\n'
+    )
+    assert len(payloads) == 2
+    assert payloads[0]["Names"] == "web"
+
+
+def test_podman_output_is_one_json_array():
+    from surveyor.scanners.workloads import _parse_runtime_output
+
+    payloads = _parse_runtime_output('[{"Names":["web"],"Id":"abc123"}]')
+    assert len(payloads) == 1
+    assert payloads[0]["Names"] == ["web"]
+
+
+def test_a_container_is_normalised_from_either_shape():
+    from surveyor.scanners.workloads import _container
+
+    docker = _container(
+        {
+            "Names": "web",
+            "ID": "abc123def456",
+            "Image": "nginx:1.25",
+            "Labels": "com.docker.compose.project=demo",
+            "Ports": "0.0.0.0:8080->80/tcp",
+            "State": "running",
+            "Status": "Up 3 hours",
+            "Networks": "bridge",
+        },
+        "docker",
+    )
+    podman = _container(
+        {
+            "Names": ["web"],
+            "Id": "abc123def456",
+            "Image": "nginx:1.25",
+            "Labels": {"com.docker.compose.project": "demo"},
+            "Ports": [{"host_port": 8080, "container_port": 80, "protocol": "tcp"}],
+            "State": "running",
+            "Status": "Up 3 hours",
+            "Networks": ["bridge"],
+        },
+        "podman",
+    )
+    assert docker is not None and podman is not None
+    for container in (docker, podman):
+        assert container.name == "web"
+        assert container.identifier == "abc123def456"
+        assert container.image == "nginx:1.25"
+        assert container.labels["com.docker.compose.project"] == "demo"
+        assert container.ports == [(8080, 80, "tcp")]
+        assert container.state == "running"
+        assert container.networks == "bridge"
+
+
+def test_a_container_with_no_name_is_not_a_container():
+    from surveyor.scanners.workloads import _container
+
+    assert _container({"Image": "nginx"}, "docker") is None
+
+
 def test_parse_df_reads_the_real_filesystems():
     filesystems = parse_df(DF)
     # devfs and auto_home are not storage.
