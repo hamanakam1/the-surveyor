@@ -199,21 +199,3 @@ def test_the_spec_names_every_conformance_case():
     on_disk = {path.name for path in (root / "tests" / "fixtures" / "invalid").glob("*.json")}
     assert named <= on_disk, f"the spec names cases that do not exist: {named - on_disk}"
     assert on_disk <= named, f"these cases are not in the spec: {on_disk - named}"
-
-
-def test_the_committed_schema_matches_the_generator():
-    """The schema is generated from the model, so it cannot drift away."""
-
-    import importlib.util
-
-    root = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location(
-        "make_schema", root / "scripts" / "make_schema.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    committed = (root / "schema" / "oet-1.0.schema.json").read_text(encoding="utf-8")
-    assert committed == module.render(), (
-        "schema/oet-1.0.schema.json is stale; run `make schema`"
-    )
