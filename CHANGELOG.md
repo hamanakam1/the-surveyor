@@ -8,6 +8,12 @@ All notable changes to The Surveyor. The format follows
 
 ### Added
 
+- **Container volumes.** `volume:` was a node kind in the model and in the
+  spec, and no scanner emitted it. A container's mounts are now recorded:
+  a named volume is `volume:pgdata`, and a bind mount is named by where it
+  lands inside the container, with the path it comes *from* recorded as a
+  fact. That path is often under the operator's home directory, so it is
+  declared sensitive and aliased by `--redact`.
 - **`surveyor fleet`**: compose every host in the ledger — this one, plus
   every import — into a single map, as ASCII, Markdown, Mermaid or JSON.
   The composition works because identity was designed for it: a device is
@@ -175,6 +181,11 @@ All notable changes to The Surveyor. The format follows
 
 ### Fixed
 
+- **Two scanners disagreeing about a fact was silent.** The compiler kept
+  the first observation and dropped the second without a word, and silence
+  reads as agreement. The disagreement is now recorded in
+  `observations.conflicts`, so a map never claims two scanners said the
+  same thing when they did not.
 - **lsof's escaped command names were not decoded.** lsof writes a command
   containing a space as `Codex\x20`, and the plat carried the escape
   sequence verbatim.

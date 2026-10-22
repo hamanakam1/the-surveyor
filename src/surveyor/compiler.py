@@ -113,6 +113,19 @@ def compile_topology(
                     f"{node.id}: kind conflict {existing.kind!r} vs {node.kind!r} from {result.scanner}"
                 )
                 continue
+            if existing is not None:
+                # Two scanners saw the same thing and disagree about a fact.
+                # The first observation wins, because a stable map beats an
+                # accurate one, but the disagreement is recorded rather than
+                # dropped: silence here reads as agreement.
+                for key, value in existing.facts.items():
+                    other = node.facts.get(key)
+                    if other is not None and other != value:
+                        conflicts.append(
+                            f"{node.id}: {key} reported as {value!r} by "
+                            f"{existing.source or 'a scanner'} and {other!r} by "
+                            f"{result.scanner}"
+                        )
             topology.add(node)
         topology.edges.extend(result.edges)
         for note in result.notes:

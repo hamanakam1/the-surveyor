@@ -42,7 +42,6 @@ of a node.
 | `model` | workload | `model:<slug>` | `model:llama3.2:3b` |
 | `service` | workload | `service:<proto>:<port>` | `service:tcp:8080`, `service:udp:5353` |
 | `volume` | workload | `volume:<name>` | `volume:pgdata` |
-
 Identity is the hard part of any topology format. Three rules keep it stable:
 
 1. **Prefer names over generated identifiers.** Container name, interface name,

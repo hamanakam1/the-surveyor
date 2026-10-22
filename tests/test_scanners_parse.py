@@ -66,6 +66,53 @@ def test_lsof_escapes_are_decoded():
     assert _unescape_lsof("Codex\\x20") == "Codex "
 
 
+def test_a_named_volume_is_named_by_its_name():
+    from surveyor.scanners.workloads import _volume_node
+
+    node = _volume_node(
+        {
+            "Type": "volume",
+            "Name": "pgdata",
+            "Source": "/var/lib/docker/volumes/pgdata/_data",
+            "Destination": "/var/lib/postgresql/data",
+            "Driver": "local",
+            "RW": "true",
+        }
+    )
+    assert node is not None
+    assert node.id == "volume:pgdata"
+    assert node.facts["type"] == "volume"
+    assert node.facts["driver"] == "local"
+    assert node.facts["destination"] == "/var/lib/postgresql/data"
+    assert node.facts["read_only"] is False
+
+
+def test_a_bind_mount_is_named_by_where_it_lands():
+    """A bind mount has no name the host chose; its source is a path."""
+
+    from surveyor.scanners.workloads import _volume_node
+
+    node = _volume_node(
+        {
+            "Type": "bind",
+            "Source": "/Users/ada/data",
+            "Destination": "/data",
+            "RW": "false",
+        }
+    )
+    assert node is not None
+    assert node.id == "volume:data"
+    assert node.facts["type"] == "bind"
+    assert node.facts["host_path"] == "/Users/ada/data"
+    assert node.facts["read_only"] is True
+
+
+def test_a_mount_with_nothing_to_name_is_not_a_node():
+    from surveyor.scanners.workloads import _volume_node
+
+    assert _volume_node({"Type": "volume"}) is None
+
+
 def test_parse_df_reads_the_real_filesystems():
     filesystems = parse_df(DF)
     # devfs and auto_home are not storage.

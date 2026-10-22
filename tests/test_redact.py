@@ -235,6 +235,27 @@ def test_redaction_aliases_a_device_id_so_peers_stay_distinct():
     assert "f0-18-98-11-22-33" not in document
 
 
+def test_redaction_aliases_a_bind_mounts_host_path():
+    """A bind mount's source is a path on the operator's own disk."""
+
+    survey = Topology(site="x")
+    survey.add(
+        Node(
+            "volume:data",
+            "volume",
+            "/data",
+            facts={"type": "bind", "destination": "/data", "host_path": "/Users/ada/data"},
+            source="workloads",
+        )
+    )
+    redacted = redact_topology(survey, salt="k")
+    volume = next(iter(redacted.nodes.values()))
+    assert volume.facts["host_path"].startswith("sha256:")
+    assert "ada" not in volume.facts["host_path"]
+    # The path inside the container is not the operator's, and is kept.
+    assert volume.facts["destination"] == "/data"
+
+
 def test_redaction_preserves_hardware_model():
     """The class of machine is shape, not identity."""
 

@@ -324,19 +324,18 @@ why it is wrong.
 **Still to do.** Two things remain, and both need a decision about the
 format rather than about the code:
 
-1. **Container volumes.** `docker ps` reports mounts, and a named volume is
-   already a `volume:` node in the model and the spec — a noun that exists
-   in the format and in no plat. It wants a `volume:` node per named volume
-   and a bind mount, with an `attaches_to` edge from the workload that
-   mounts it. A bind mount's *source* is a path on the host, and a path
-   under the operator's home directory is an identifier; the container's
-   *destination* is the safe half of the pair.
+1. **Container volumes.** *Done in this release.* A named volume is
+   `volume:pgdata`, and a bind mount is named by where it lands inside the
+   container, with the path it comes *from* recorded as a fact. That path is
+   often under the operator's home directory, so it is declared sensitive
+   and aliased by `--redact`.
 2. **Filesystems as nodes.** A disk is arguably a thing in its own right,
    with an identity, a size, and a mount point — which argues for a
    `filesystem:` node kind rather than facts on the host. The format's own
    rule is that a new noun needs a version bump, so this is an OET 1.1
    decision, and it should be taken once, with the whole vocabulary, rather
    than one noun at a time.
+
 
 
 ### B3. Containers beyond Docker

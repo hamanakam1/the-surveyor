@@ -19,8 +19,10 @@ from ..identity import host_id as local_host_id
 from ..model import (
     KIND_MODEL,
     KIND_SERVICE,
+    KIND_VOLUME,
     KIND_WORKLOAD,
     LAYER_WORKLOAD,
+    REL_ATTACHES_TO,
     REL_EXPOSES,
     REL_RUNS,
     REL_SERVES,
@@ -72,6 +74,60 @@ def _parse_labels(raw: str) -> dict[str, str]:
     return labels
 
 
+def _mounts(raw: Any) -> list[dict[str, Any]]:
+    """The mounts of a container, as docker reports them."""
+
+    if not isinstance(raw, list):
+        return []
+    found: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        found.append({key: str(value) for key, value in item.items() if value is not None})
+    return found
+
+
+def _volume_node(mount: dict[str, Any]) -> Node | None:
+    """A volume or bind mount, as a node of its own.
+
+    The name of a named volume is its identity. A bind mount has no name on
+    the host that anyone chose deliberately, so it is named by where it
+    lands inside the container -- and the path it comes *from* is recorded
+    as a fact, because that path is where the data actually lives and is
+    the operator's own directory.
+    """
+
+    kind = mount.get("Type", "volume")
+    destination = mount.get("Destination", "")
+    name = mount.get("Name", "")
+    if kind == "volume" and name:
+        volume_id = f"volume:{slug(name)}"
+        label = name
+        facts: dict[str, Any] = {"type": "volume", "name": name}
+        if mount.get("Driver"):
+            facts["driver"] = mount["Driver"]
+    elif destination:
+        volume_id = f"volume:{slug(destination)}"
+        label = destination
+        facts = {"type": "bind", "destination": destination}
+        if mount.get("Source"):
+            facts["host_path"] = mount["Source"]
+    else:
+        return None
+    if destination:
+        facts.setdefault("destination", destination)
+    facts["read_only"] = str(mount.get("RW", "true")).lower() == "false"
+    return Node(
+        id=volume_id,
+        kind=KIND_VOLUME,
+        label=label,
+        layer=LAYER_WORKLOAD,
+        facts=facts,
+        tags=("volume", kind),
+        source="workloads",
+    )
+
+
 def scan_docker(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
     probe = log.add(run(["docker", "ps", "--no-trunc", "--format", "{{json .}}"], timeout=min(ctx.timeout, 8.0)))
     if not probe.ok:
@@ -120,6 +176,15 @@ def scan_docker(ctx: ScanContext, result: ScanResult, log: ProbeLog) -> None:
             facts["compose_service"] = labels["com.docker.compose.service"]
         if ports:
             facts["published_ports"] = [f"{published}->{container}/{proto}" for published, container, proto in ports]
+
+        for mount in _mounts(payload.get("Mounts")):
+            volume = _volume_node(mount)
+            if volume is None:
+                continue
+            result.nodes.append(volume)
+            result.edges.append(
+                Edge(workload_id, REL_ATTACHES_TO, volume.id, {"destination": volume.facts.get("destination", "")})
+            )
 
         telemetry: dict[str, Any] = {}
         for source, target in (("State", "state"), ("Status", "status"), ("RunningFor", "running_for")):

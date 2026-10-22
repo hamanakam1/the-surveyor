@@ -57,6 +57,9 @@ SENSITIVE_KEYS_BY_KIND: dict[str, frozenset[str]] = {
     "model": frozenset({"name"}),
     "workload": frozenset({"models"}),
     "service": frozenset({"workload"}),
+    # A bind mount's source is a path on the operator's own disk, often
+    # under their home directory.
+    "volume": frozenset({"host_path"}),
 }
 
 #: Keys whose value names a *part* of a longer string, and so must have that
