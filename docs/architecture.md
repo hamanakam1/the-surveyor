@@ -60,6 +60,8 @@ corrupt a recorded plat.
 | `validation.py` | the OET contract, enforced in code | no |
 | `scribe.py` | deterministic changelog, optional local-model rewrite | no |
 | `render.py` | ASCII map, Markdown tables, Mermaid graph | no |
+| `fleet.py` | compose many hosts into one map | no |
+| `doctor.py` | diagnose what this machine lets the Surveyor see | no |
 | `store.py` | content-addressed objects, hash-chained journal, redaction key | **yes** (ledger only) |
 | `daemon.py` | schedule, instance lock, signal handling | **yes** (via store) |
 | `cli.py` | argument parsing, exit codes, output | **yes** (via store) |
@@ -92,6 +94,7 @@ plausible lie.
 ├── changes/
 │   └── 0000-94f4b2e6037a.md  scribe output for that survey
 ├── daemon.lock               non-blocking instance lock
+├── salt                      the ledger's redaction key, owner-read only
 └── lock                      writer lock for commits
 ```
 

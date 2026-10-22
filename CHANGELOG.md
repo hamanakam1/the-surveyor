@@ -204,6 +204,10 @@ All notable changes to The Surveyor. The format follows
 
 ### Fixed
 
+- **The gateway was not on its own subnet.** A peer seen on the wire got a
+  `member_of` edge to the subnet it was seen on, and the gateway — which is
+  on the same subnet — did not. The map said the router was reachable and
+  said nothing about where it lived.
 - **The power layer claimed more than the OS knew.** On macOS the mains
   supply was recorded as `source: utility`, tagged `utility`, and rendered
   as "utility" — but macOS reports only that the machine is drawing from

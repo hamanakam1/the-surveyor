@@ -117,6 +117,18 @@ def test_without_a_scheduler_the_scanner_says_so():
     assert any("no scheduled services" in note for note in result.notes)
 
 
+def test_the_services_layer_is_exactly_these_nodes():
+    """The complete set, not a sample of it."""
+
+    result = _run({"systemctl": SYSTEMCTL}, platform="linux")
+    assert {node.id for node in result.nodes} == {
+        "workload:systemd:sshd.service",
+        "workload:systemd:nginx.service",
+        "workload:systemd:cron.service",
+        "workload:systemd:docker.service",
+    }
+
+
 def test_the_services_scanner_is_registered():
     from surveyor.scanners.base import registry
 

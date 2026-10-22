@@ -101,3 +101,11 @@ def test_a_real_thermal_warning_is_recorded():
     telemetry = result.nodes[0].telemetry
     assert telemetry.get("cpu_speed_limit") == 100
     assert "exceeded" in telemetry.get("thermal_warning", "")
+
+
+def test_the_bare_metal_layer_is_exactly_one_node():
+    """The complete set, not a sample of it."""
+
+    result = _run({"df": DF})
+    assert {node.id for node in result.nodes} == {"host:mac"}
+    assert result.edges == []

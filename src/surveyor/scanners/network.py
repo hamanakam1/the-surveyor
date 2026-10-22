@@ -453,6 +453,22 @@ def _ipv6_scope(address: str) -> str:
     return "global"
 
 
+def _subnet_of(address: str, subnets: list[tuple[Any, str]]) -> str:
+    """The id of the subnet an address belongs to, if any."""
+
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return ""
+    for network, candidate in subnets:
+        try:
+            if parsed in network:
+                return candidate
+        except TypeError:  # pragma: no cover - mixed families
+            continue
+    return ""
+
+
 def _device_id(mac: str) -> str:
     """A device's durable identity: its hardware address.
 
@@ -638,6 +654,11 @@ def scan_network(ctx: ScanContext) -> ScanResult:
             )
         )
         result.edges.append(Edge(host, REL_ROUTES_VIA, gateway_id, {"role": "default"}))
+        gateway_subnet = _subnet_of(gateway, subnets)
+        if gateway_subnet:
+            result.edges.append(
+                Edge(gateway_id, REL_MEMBER_OF, gateway_subnet, {"address": gateway})
+            )
 
     # The IPv6 default route, if the host has one. A dual-stacked box has
     # two gateways, and a map that shows one of them is showing half.
@@ -692,14 +713,7 @@ def scan_network(ctx: ScanContext) -> ScanResult:
                 source="network",
             )
         )
-        subnet_id = ""
-        for network, candidate in subnets:
-            try:
-                if ipaddress.ip_address(peer.address) in network:
-                    subnet_id = candidate
-                    break
-            except ValueError:
-                continue
+        subnet_id = _subnet_of(peer.address, subnets)
         if subnet_id:
             result.edges.append(Edge(node_id, REL_MEMBER_OF, subnet_id, {"address": peer.address}))
 

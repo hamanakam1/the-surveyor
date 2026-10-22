@@ -165,6 +165,20 @@ def test_every_supply_powers_the_host():
     }
 
 
+def test_the_power_layer_is_exactly_these_nodes():
+    """The complete set, not a sample of it."""
+
+    result = _run({"pmset -g batt": PMSET_AC, "ioreg": IOREG})
+    assert {node.id for node in result.nodes} == {
+        "power:ac",
+        "power:battery:internal-0",
+    }
+    assert {edge.id for edge in result.edges} == {
+        "power:ac|powers|host:mac",
+        "power:battery:internal-0|powers|host:mac",
+    }
+
+
 # --------------------------------------------------------------------------
 # Linux
 # --------------------------------------------------------------------------

@@ -85,6 +85,29 @@ def test_the_gateway_becomes_an_observed_device_when_the_wire_answers():
     assert "unverified" not in gateway.tags
 
 
+def test_the_network_layer_is_exactly_these_nodes():
+    """The complete set, not a sample of it.
+
+    A parser that starts reading a field the OS has just added would
+    otherwise add a node nobody noticed.
+    """
+
+    result, _ = _run({"ifconfig": IFCONFIG, "route": ROUTE, "arp": ARP})
+    assert {node.id for node in result.nodes} == {
+        "iface:mac:en0",
+        "network:192.168.53.0/24",
+        "device:f0-18-98-11-22-33",
+        "device:3c-22-fb-44-55-66",
+    }
+    assert {edge.id for edge in result.edges} == {
+        "host:mac|hosts|iface:mac:en0",
+        "iface:mac:en0|attaches_to|network:192.168.53.0/24",
+        "host:mac|routes_via|device:f0-18-98-11-22-33",
+        "device:f0-18-98-11-22-33|member_of|network:192.168.53.0/24",
+        "device:3c-22-fb-44-55-66|member_of|network:192.168.53.0/24",
+    }
+
+
 def test_a_neighbour_becomes_a_device_on_the_subnet():
     result, _ = _run({"ifconfig": IFCONFIG, "route": ROUTE, "arp": ARP})
     peers = [
