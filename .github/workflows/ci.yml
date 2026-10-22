@@ -8,6 +8,13 @@ on:
 permissions:
   contents: read
 
+# A new push supersedes the run before it. Without this, a burst of commits
+# queues a run per commit, and the oldest -- the least interesting -- is the
+# one that finishes last.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: lint and types
