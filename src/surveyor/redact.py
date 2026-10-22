@@ -278,7 +278,11 @@ def _redact_value(key: str, value: Any, aliaser: Aliaser, sensitive: bool) -> An
     if isinstance(value, tuple):
         return tuple(_redact_value(key, item, aliaser, False) for item in value)
     if isinstance(value, dict):
-        return {inner: _redact_value(inner, item, aliaser, False) for inner, item in value.items()}
+        # A sensitive key holding a mapping: the leaves are the identifiers.
+        return {
+            inner: _redact_value(inner, item, aliaser, sensitive)
+            for inner, item in value.items()
+        }
     return value
 
 

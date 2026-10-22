@@ -186,6 +186,16 @@ scanner-declared registry would make redaction depend on import order — but
 it should move into the scanner interface once the plugin story (D4) exists
 and the registry can be loaded deterministically.
 
+**Exit criteria, met.** `tests/test_redaction_acceptance.py` takes a plat
+containing every identifier shape the scanners can currently emit — the
+hostname in facts, labels, observations *and* node ids; container names;
+image registry owners; Wi-Fi networks; serials; hardware addresses in both
+forms; a UUID; a local model name; an operator's home directory — and
+asserts that none of them survive, while the values the policy deliberately
+keeps (private addresses, the class of machine, a public registry host) do.
+Turning the sensitivity declarations off makes it fail, so it is a real
+guard and not a formality.
+
 
 ### A3. The schema becomes executable
 
