@@ -218,25 +218,39 @@ version, or a kernel, and nothing catches it.
 ### A6. Harden the probe boundary
 
 **Problem.** `probe.py` is the security boundary and it is good — argv only,
-no shell, allowlist, timeouts, scrubbed environment. Three edges remain:
+no shell, allowlist, timeouts, scrubbed environment. Three edges remained:
 
-1. **The allowlist matches on basename only.** `/tmp/attacker/docker` passes,
+1. **The allowlist matched on basename only.** `/tmp/attacker/docker` passed,
    because `Path(argv[0]).name` is `docker`. Combined with an inherited
-   `PATH`, a writable directory earlier in `PATH` can shadow an allowlisted
+   `PATH`, a writable directory earlier in `PATH` could shadow an allowlisted
    binary.
-2. **Environment scrubbing is name-based and incomplete.** `AWS_ACCESS_KEY_ID`,
-   `GITHUB_TOKEN` (caught by `TOKEN`), `SSH_AUTH_SOCK`, `HOME` and `PATH` all
-   survive. `SSH_AUTH_SOCK` in particular hands a child process the ability
-   to use the operator's SSH agent.
-3. **Timeouts kill the child, not the process group.** A probe that spawns
-   grandchildren can leave them running.
+2. **Environment scrubbing was name-based and incomplete.** `AWS_ACCESS_KEY_ID`
+   and `SSH_AUTH_SOCK` both survived it. `SSH_AUTH_SOCK` in particular hands
+   a child process the ability to use the operator's SSH agent.
+3. **Timeouts killed the child, not the process group.** A probe that spawned
+   grandchildren could leave them running.
 
-**Work.** Resolve allowlisted programs to an absolute path from a fixed,
-operator-configurable list at start-up and compare that path, not the
-basename; scrub `SSH_AUTH_SOCK`, `*_KEY`, `*_AUTH`, and `AWS_*` as well;
-start probes in a new process group and kill the group on timeout. Document
-the threat model in `SECURITY.md` explicitly: this tool reads a host an
-operator already controls, and is not designed to resist a hostile host.
+**Done in this release.** Programs are resolved to an absolute path through a
+curated search path; the inherited `PATH` is consulted only for directories
+nobody else can write to; a program resolving into a world-writable
+directory is refused. The environment marker list now covers `KEY` and
+`AUTH`. Probes start in their own session and the whole process group is
+killed on timeout.
+
+**Also done — least privilege.** Eight programs were allowlisted with no
+caller: `arp`, `df`, `launchctl`, `netstat`, `nvidia-smi`, `powermetrics`,
+`system_profiler`, `uptime`. An allowlisted program is an attack surface with
+no upside, so they are gone, and a test now fails if an allowlisted program
+has no caller. The scanners planned for Horizon B will add their tools back
+when they need them — the allowlist grows on demand, which is the only way it
+should ever grow.
+
+**Still to do.** `SECURITY.md` now states plainly what this is *not*
+designed for: a hostile host that can lie about `sysctl` output, or replace
+`/usr/bin/sysctl`, will fool the Surveyor. The hardening above is about
+accidents, shadowing and credential leakage, not adversaries. That sentence
+belongs in the threat model rather than implied by omission.
+
 
 ---
 

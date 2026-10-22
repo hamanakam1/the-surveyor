@@ -33,6 +33,27 @@ All notable changes to The Surveyor. The format follows
 
 ### Security
 
+- **The probe boundary resolves programs to absolute paths.** The allowlist
+  matched on the program's *basename*, so any path ending in an allowlisted
+  name passed, and the inherited `PATH` was passed through unchanged — a
+  writable directory earlier in `PATH` could shadow an allowlisted tool.
+  Programs are now resolved through a curated search path, and the
+  operator's `PATH` is only consulted for directories nobody else can write
+  to. A program that resolves into a world-writable directory is refused.
+- **The environment scrub list was incomplete.** `AWS_ACCESS_KEY_ID` and
+  `SSH_AUTH_SOCK` survived it: the first because no marker matched it, the
+  second because `AUTH` was not a marker. The latter handed a child process
+  the ability to use the operator's SSH agent. The marker list now includes
+  `KEY` and `AUTH`.
+- **A probe that overruns is killed, process group and all.** `subprocess`
+  killed the direct child only, so a probe that spawned grandchildren could
+  leave them running after the timeout. Probes now start in their own
+  session and the whole group is killed on timeout.
+- **The allowlist is least privilege.** Eight programs were allowlisted with
+  no caller — `arp`, `df`, `launchctl`, `netstat`, `nvidia-smi`,
+  `powermetrics`, `system_profiler`, `uptime`. An allowlisted program is an
+  attack surface, so the list now holds only what a scanner actually runs, and
+  a test fails if an allowlisted program has no caller.
 - **`--redact` no longer leaks the identifiers it claimed to remove.** The
   old redactor masked MAC addresses and serials and left everything else in
   the clear. A redacted plat still carried:

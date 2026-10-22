@@ -10,14 +10,35 @@ That promise is enforced in code, not just documented:
 
 - **Command allowlist.** `probe.ALLOWED_PROGRAMS` names every executable the
   scanners may run (`sysctl`, `pmset`, `ioreg`, `ifconfig`, `ip`, `route`,
-  `lsof`, `ss`, `docker ps`, `sw_vers`, `uname`, …). Shells, `sudo`, and
-  scripting bridges are rejected before a process is created.
+  `lsof`, `ss`, `docker ps`, `sw_vers`, `uname`, `ps`, `networksetup`, …).
+  Shells, `sudo`, and scripting bridges are rejected before a process is
+  created. The list is *least privilege*: a program is on it because a
+  scanner calls it, and a test fails if an allowlisted program has no caller.
+- **Absolute paths, not names.** The allowlist is matched on the program's
+  basename, but the program that actually runs is resolved to an absolute
+  path in a curated search path (`/usr/local/bin`, `/usr/sbin`, `/usr/bin`,
+  `/sbin`, `/bin`, and the Homebrew prefixes). The inherited `PATH` is only
+  consulted for directories nobody else can write to. A program that
+  resolves into a world-writable directory is refused.
 - **No shell.** Commands are argument vectors passed with `shell=False`.
 - **Scrubbed environment.** Variables whose names contain `TOKEN`, `SECRET`,
-  `PASSWORD`, `API_KEY`, `CREDENTIAL`, or `SESSION` are removed from child
-  processes, so a survey cannot leak credentials into logs or subprocesses.
+  `PASSWORD`, `PASSWD`, `KEY`, `CREDENTIAL`, `SESSION`, or `AUTH` are removed
+  from child processes, so a survey cannot leak credentials into logs or
+  subprocesses. This covers `AWS_ACCESS_KEY_ID` and `SSH_AUTH_SOCK`, which
+  the previous marker list missed.
 - **Bounded execution.** Every probe has a timeout, output is capped at 2 MB,
-  and each scanner runs inside a total time budget.
+  and each scanner runs inside a total time budget. A probe that overruns
+  has its **whole process group** killed, so it cannot leave grandchildren
+  behind.
+
+### What this is not designed for
+
+The Surveyor reads a machine the operator already controls. It is not built
+to survive a *hostile* host — a rootkit that can lie about `sysctl` output
+will fool it, and a rootkit that can replace `/usr/bin/sysctl` will fool it
+too. The hardening above is about accidents, shadowing, and credential
+leakage, not about adversary-controlled machines.
+
 
 ## Data handling
 
