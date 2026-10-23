@@ -28,7 +28,7 @@ from .scanners.base import registry
 from .scribe import compose_changelog
 from .store import Ledger
 from .util import short_digest, slug
-from .validation import Problem, validate_document
+from .validation import Problem, validate_document, validate_topology
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -256,15 +256,24 @@ def _salt_for(config: Config, ledger: Ledger) -> str:
     return ledger.salt
 
 
+def _read_document(path: Path) -> Any:
+    """Read a plat file with consistent, path-specific CLI diagnostics."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except UnicodeError as exc:
+        raise SchemaError(f"{path}: not valid UTF-8 text") from exc
+    except OSError as exc:
+        raise SchemaError(f"{path}: cannot read OET document: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise SchemaError(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
+
+
 def _parse_ref(ref: str, ledger: Ledger) -> tuple[Topology | None, str]:
     """Resolve a user-supplied plat reference to a topology."""
 
     candidate = Path(ref).expanduser()
     if candidate.exists() and candidate.is_file():
-        try:
-            data = json.loads(candidate.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise SchemaError(f"{candidate}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
+        data = _read_document(candidate)
         return Topology.from_dict(data), candidate.name
 
     entries = ledger.history()
@@ -303,16 +312,18 @@ def _parse_ref(ref: str, ledger: Ledger) -> tuple[Topology | None, str]:
     if imported is not None:
         return ledger.get(imported.digest), f"#{imported.seq}"
 
-    matches = [
-        entry
+    # Forced surveys and imports can reuse an object. A content reference
+    # names that object, with the newest matching journal entry as its label.
+    matches = {
+        entry.digest.split(":", 1)[-1]: entry
         for entry in entries
         if entry.digest.split(":", 1)[-1].startswith(ref.split(":", 1)[-1])
-    ]
+    }
     if not matches:
         raise StoreError(f"no recorded survey matches {ref!r}")
     if len(matches) > 1:
-        raise StoreError(f"{ref!r} is ambiguous ({len(matches)} surveys match); use more characters")
-    entry = matches[0]
+        raise StoreError(f"{ref!r} is ambiguous ({len(matches)} objects match); use more characters")
+    entry = next(iter(matches.values()))
     return ledger.get(entry.digest), f"#{entry.seq}"
 
 
@@ -674,7 +685,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
 def _cmd_daemon(args: argparse.Namespace) -> int:
     config = _config(args)
-    interval = args.interval or config.interval
+    interval = config.interval if args.interval is None else args.interval
     if not args.json_lines:
         print(f"◈ {format_daemon_start(config, interval=interval, once=args.once)}")
     stats = run_daemon(
@@ -705,7 +716,7 @@ def _cmd_redact(args: argparse.Namespace) -> int:
         path = Path(args.path).expanduser()
         if not path.exists():
             raise
-        topology = Topology.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        topology = Topology.from_dict(_read_document(path))
         label = path.name
     if topology is None:
         raise StoreError(f"no survey available at {args.path}; run `surveyor scan` first")
@@ -841,23 +852,20 @@ def _cmd_export(args: argparse.Namespace) -> int:
 def _cmd_import(args: argparse.Namespace) -> int:
     """Record a plat that came from another host."""
 
-    from .validation import validate_document
-
     path = Path(args.path).expanduser()
     if not path.exists():
         raise SchemaError(f"{path} not found")
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SchemaError(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
+    data = _read_document(path)
 
     problems = validate_document(data)
+    if not problems:
+        topology = Topology.from_dict(data)
+        problems = validate_topology(topology, data)
     if problems:
         for problem in problems:
             print(f"  - {problem.code}: {problem}", file=sys.stderr)
         raise SchemaError(f"{path} is not a valid OET document")
 
-    topology = Topology.from_dict(data)
     host = args.host or _host_of(topology)
     if not host:
         raise SchemaError(
@@ -953,38 +961,29 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     path = Path(args.path).expanduser()
     if not path.exists():
         raise SchemaError(f"{path} not found")
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SchemaError(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
+    data = _read_document(path)
 
     problems = validate_document(data)
     counts: dict[str, Any] = {"nodes": 0, "edges": 0}
-    fingerprint = str(data.get("fingerprint") or "")
-    try:
-        topology = Topology.from_dict(data)
-    except SchemaError as exc:
-        problems.append(Problem("bad-document", "", str(exc)))
-    else:
-        counts = topology.counts()
-        if fingerprint and fingerprint != topology.fingerprint:
-            problems.append(
-                Problem(
-                    "fingerprint-mismatch",
-                    "fingerprint",
-                    f"declared {fingerprint[:19]} does not match the document "
-                    f"({topology.fingerprint[:19]})",
-                )
-            )
-        elif not fingerprint:
-            fingerprint = topology.fingerprint
+    document = data if isinstance(data, dict) else {}
+    fingerprint = str(document.get("fingerprint") or "")
+    if not problems:
+        try:
+            topology = Topology.from_dict(document)
+        except SchemaError as exc:
+            problems.append(Problem("bad-document", "", str(exc)))
+        else:
+            counts = topology.counts()
+            problems = validate_topology(topology, document)
+            if not fingerprint:
+                fingerprint = topology.fingerprint
 
     if args.json:
         _emit_json(
             {
                 "path": str(path),
                 "ok": not problems,
-                "oet_version": str(data.get("oet_version") or ""),
+                "oet_version": str(document.get("oet_version") or ""),
                 "fingerprint": fingerprint,
                 "counts": counts,
                 "problems": [problem.to_dict() for problem in problems],
@@ -994,8 +993,8 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         status = "✓ valid" if not problems else "✗ invalid"
         print(f"{status} · {path}")
         print(
-            f"  OET {data.get('oet_version', '')} · {data.get('site', '')} · "
-            f"{data.get('generated_at', '')}"
+            f"  OET {document.get('oet_version', '')} · {document.get('site', '')} · "
+            f"{document.get('generated_at', '')}"
         )
         print(f"  {counts['nodes']} nodes · {counts['edges']} edges · fingerprint {fingerprint}")
         for problem in problems:

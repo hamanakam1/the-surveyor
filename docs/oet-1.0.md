@@ -86,6 +86,10 @@ edges and records why; `surveyor validate` reports them.
 
 Every node carries two attribute maps.
 
+OET numbers must be finite JSON numbers everywhere in the document, including
+observations and extension fields. `NaN`, `Infinity`, and values that overflow
+the reader's numeric representation are rejected by validation and import.
+
 **`facts` -- the shape of the thing.** Image, CPU model, MAC address, subnet,
 port, design capacity, container id. Changing a fact changes the map.
 

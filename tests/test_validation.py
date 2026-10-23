@@ -93,6 +93,162 @@ def test_a_good_plat_has_no_problems(topology):
     assert validate_topology(topology) == []
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["oet_version", "site", "generated_at", "nodes", "edges", "fingerprint", "counts",
+     "generator", "observations"],
+)
+def test_explicit_null_top_level_fields_are_rejected(topology, field):
+    document = topology.to_dict()
+    document[field] = None
+    assert any(
+        problem.code == "bad-type" and problem.path == field
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("field", ["id", "kind", "layer", "label", "source"])
+@pytest.mark.parametrize("value", [None, [], {}, 7, False])
+def test_node_string_fields_require_strings(topology, field, value):
+    document = topology.to_dict()
+    document["nodes"][0][field] = value
+    assert any(
+        problem.code == "bad-type" and problem.path == f"nodes[0].{field}"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("field", ["source", "relation", "target"])
+@pytest.mark.parametrize("value", [None, [], {}, 7, False])
+def test_edge_string_fields_require_strings(topology, field, value):
+    document = topology.to_dict()
+    document["edges"][0][field] = value
+    assert any(
+        problem.code == "bad-type" and problem.path == f"edges[0].{field}"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("field", ["facts", "telemetry", "tags"])
+def test_explicit_null_node_containers_are_rejected(topology, field):
+    document = topology.to_dict()
+    document["nodes"][0][field] = None
+    assert any(
+        problem.code == "bad-type" and problem.path == f"nodes[0].{field}"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("tag", [{}, [], None, 1])
+def test_invalid_tag_values_report_problems_without_raising(topology, tag):
+    document = topology.to_dict()
+    document["nodes"][0]["tags"] = [tag]
+    assert any(
+        problem.code == "bad-type" and problem.path == "nodes[0].tags[0]"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("field", ["nodes", "edges", "by_layer", "by_kind", "by_relation"])
+def test_explicit_null_count_fields_are_rejected(topology, field):
+    document = topology.to_dict()
+    document["counts"][field] = None
+    assert any(problem.path == f"counts.{field}" for problem in validate_document(document))
+
+
+@pytest.mark.parametrize("value", [None, [], "scanner", 7])
+def test_observations_must_be_an_object(topology, value):
+    document = topology.to_dict()
+    document["observations"] = value
+    assert any(
+        problem.code == "bad-type" and problem.path == "observations"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize(
+    ("generator", "path", "code"),
+    [(None, "generator", "bad-type"), ([], "generator", "bad-type"),
+     ({}, "generator.name", "missing-field"),
+     ({"name": None}, "generator.name", "bad-type"),
+     ({"name": "surveyor", "version": []}, "generator.version", "bad-type")],
+)
+def test_generator_metadata_has_the_declared_shape(topology, generator, path, code):
+    document = topology.to_dict()
+    document["generator"] = generator
+    assert any(
+        problem.code == code and problem.path == path
+        for problem in validate_document(document)
+    )
+
+
+def test_optional_fields_can_still_be_omitted(topology):
+    document = topology.to_dict()
+    for field in ("fingerprint", "counts", "generator", "observations"):
+        document.pop(field, None)
+    for node in document["nodes"]:
+        node.pop("tags", None)
+        node.pop("source", None)
+    assert validate_document(document) == []
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize(
+    "location",
+    ["fact", "telemetry-list", "edge-map", "observation", "generator", "extension"],
+)
+def test_nonfinite_numbers_are_rejected_at_their_document_path(topology, value, location):
+    document = topology.to_dict()
+    if location == "fact":
+        document["nodes"][0]["facts"]["reading"] = value
+        path = "nodes[0].facts.reading"
+    elif location == "telemetry-list":
+        document["nodes"][0]["telemetry"]["readings"] = [1, value]
+        path = "nodes[0].telemetry.readings[1]"
+    elif location == "edge-map":
+        document["edges"][0]["facts"]["limits"] = {"upper": value}
+        path = "edges[0].facts.limits.upper"
+    elif location == "observation":
+        document["observations"]["results"] = [{"metrics": {"reading": value}}]
+        path = "observations.results[0].metrics.reading"
+    elif location == "generator":
+        document["generator"]["elapsed"] = value
+        path = "generator.elapsed"
+    else:
+        document["extension"] = {"value": value}
+        path = "extension.value"
+    assert any(
+        problem.code == "bad-value" and problem.path == path
+        for problem in validate_document(document)
+    )
+
+
+def test_finite_numbers_and_null_observations_remain_valid(topology):
+    document = topology.to_dict()
+    document["nodes"][0]["facts"]["readings"] = [0, -1, 1.5, 1e308, 1e-308, 10**400]
+    document["observations"]["optional"] = None
+    document["observations"]["measurements"] = [True, False, 0.0, {"empty": None}]
+    assert validate_document(document) == []
+
+
+def test_nonfinite_numbers_in_python_tuple_observations_are_rejected(topology):
+    document = topology.to_dict()
+    document["observations"]["readings"] = (0, float("nan"))
+    assert any(
+        problem.code == "bad-value" and problem.path == "observations.readings[1]"
+        for problem in validate_document(document)
+    )
+
+
+def test_finiteness_check_terminates_for_shared_and_cyclic_python_containers(topology):
+    document = topology.to_dict()
+    readings = [float("inf")]
+    readings.append(readings)
+    document["observations"]["readings"] = readings
+    document["observations"]["same_readings"] = readings
+    assert "bad-value" in codes(validate_document(document))
+
+
 def test_a_redacted_plat_is_still_a_valid_plat(topology):
     """Redaction rewrites ids; the result must still obey the format."""
 

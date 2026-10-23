@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import urllib.error
+from unittest.mock import Mock
+
 import pytest
 
 from conftest import build_topology, change_fact, change_telemetry, without_node
@@ -80,6 +83,52 @@ def test_markdown_contains_facts_and_no_model_when_template(topology):
     assert "scribe: template" in output.markdown
 
 
+@pytest.mark.parametrize(
+    ("attribute", "field", "value"),
+    [("site", "site", "other-site"), ("schema_version", "oet_version", "1.1")],
+)
+def test_markdown_reports_plat_metadata_changes(topology, attribute, field, value):
+    changed = Topology.from_dict(topology.to_dict())
+    setattr(changed, attribute, value)
+    report = diff_topologies(topology, changed)
+
+    output = compose_changelog(report, changed, previous=topology, backend="template")
+
+    assert "### Plat metadata" in output.markdown
+    assert f"{field}: `{getattr(topology, attribute)}` → `{value}`" in output.markdown
+    assert "1 notice" in output.markdown
+    assert "Nothing structural moved" not in output.narrative
+    assert "weather" not in output.narrative
+
+
+def test_metadata_group_keeps_node_changes_in_their_layer(topology):
+    changed = change_fact(topology, "workload:docker:web", "image", "nginx:1.27")
+    changed.site = "other-site"
+    report = diff_topologies(topology, changed)
+
+    output = compose_changelog(report, changed, previous=topology, backend="template")
+
+    assert "### Workloads" in output.markdown
+    assert "### Plat metadata" in output.markdown
+    assert "image: `nginx:1.25` → `nginx:1.27`" in output.markdown
+    assert "site: `test-site` → `other-site`" in output.markdown
+
+
+def test_markdown_keeps_each_modified_edge_fact(topology):
+    changed = Topology.from_dict(topology.to_dict())
+    power = next(edge for edge in changed.edges if edge.source == "power:ac")
+    power.facts["priority"] = 9
+    service = next(edge for edge in changed.edges if edge.relation == "exposes")
+    service.facts["container_port"] = 9000
+    report = diff_topologies(topology, changed)
+
+    output = compose_changelog(report, changed, previous=topology, backend="template")
+
+    assert len(report.changes) == 2
+    assert "priority: `1` → `9`" in output.markdown
+    assert "container_port: `80` → `9000`" in output.markdown
+
+
 def test_markdown_includes_operator_note(topology):
     changed = change_fact(topology, "workload:docker:web", "image", "nginx:1.27")
     report = diff_topologies(topology, changed)
@@ -102,20 +151,26 @@ def test_telemetry_only_has_no_structural_section(topology):
     assert "Telemetry drift" in output.markdown
 
 
-def test_ollama_failure_falls_back_to_the_deterministic_draft(topology):
-    config = Config(scribe="ollama", ollama_endpoint="http://127.0.0.1:9", llm_timeout=0.3)
+def test_ollama_failure_falls_back_to_the_deterministic_draft(topology, monkeypatch):
+    transport = Mock(side_effect=urllib.error.URLError("synthetic connection failure"))
+    monkeypatch.setattr("surveyor.scribe.urllib.request.urlopen", transport)
+    config = Config(scribe="ollama", ollama_endpoint="http://model.example.test:11434", llm_timeout=0.3)
     changed = change_fact(topology, "workload:docker:web", "image", "nginx:1.27")
     report = diff_topologies(topology, changed)
     output = compose_changelog(report, changed, previous=topology, config=config)
     assert output.backend == "template"
     assert "local model unavailable" in output.warning
     assert "nginx:1.27" in output.markdown
+    transport.assert_called_once()
 
 
-def test_polish_raises_llm_error_when_the_endpoint_is_dead():
-    config = Config(scribe="ollama", ollama_endpoint="http://127.0.0.1:9", llm_timeout=0.2)
+def test_polish_raises_llm_error_when_the_endpoint_is_dead(monkeypatch):
+    transport = Mock(side_effect=urllib.error.URLError("synthetic connection failure"))
+    monkeypatch.setattr("surveyor.scribe.urllib.request.urlopen", transport)
+    config = Config(scribe="ollama", ollama_endpoint="http://model.example.test:11434", llm_timeout=0.2)
     topology = build_topology()
     changed = change_fact(topology, "workload:docker:web", "image", "api:2")
     report = diff_topologies(topology, changed)
-    with pytest.raises(LLMError):
+    with pytest.raises(LLMError, match="synthetic connection failure"):
         polish("draft", report, config)
+    transport.assert_called_once()

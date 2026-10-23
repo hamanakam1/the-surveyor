@@ -19,12 +19,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from .compiler import survey
 from .config import Config
 from .differ import diff_topologies
-from .errors import StoreError
+from .errors import ConfigError, StoreError
 from .notify import Notifier
 from .scribe import compose_changelog
 from .store import Ledger
@@ -84,19 +84,18 @@ class InstanceLock:
         self._handle = None
 
 
-def _install_stop_handlers(stop: threading.Event) -> list[int]:
-    installed: list[int] = []
+def _install_stop_handlers(stop: threading.Event) -> dict[int, Any]:
+    previous: dict[int, Any] = {}
 
     def handler(_signum: int, _frame: object) -> None:
         stop.set()
 
     for signum in (signal.SIGINT, signal.SIGTERM):
         try:
-            signal.signal(signum, handler)
-            installed.append(signum)
+            previous[signum] = signal.signal(signum, handler)
         except (ValueError, OSError):  # pragma: no cover - non-main thread
             continue
-    return installed
+    return previous
 
 
 def run_daemon(
@@ -111,6 +110,12 @@ def run_daemon(
 ) -> DaemonStats:
     """Run survey cycles until stopped, ``once``, or ``max_cycles``."""
 
+    cadence = config.interval if interval is None else interval
+    if type(cadence) is not int or cadence <= 0:
+        raise ConfigError("interval must be a positive integer number of seconds")
+    if max_cycles is not None and (type(max_cycles) is not int or max_cycles <= 0):
+        raise ConfigError("max_cycles must be a positive integer")
+
     ledger = Ledger(config.store)
     lock = InstanceLock(config.store / "daemon.lock")
     lock.acquire()
@@ -122,7 +127,6 @@ def run_daemon(
         on=config.notify_on,
     )
     stop_event = stop or threading.Event()
-    cadence = max(1, interval or config.interval)
     previous_handlers = _install_stop_handlers(stop_event)
 
     def log(payload: dict[str, object], human: str) -> None:
@@ -228,9 +232,9 @@ def run_daemon(
             while not stop_event.is_set() and time.monotonic() < deadline:
                 stop_event.wait(min(0.5, cadence))
     finally:
-        for signum in previous_handlers:
+        for signum, previous in previous_handlers.items():
             try:
-                signal.signal(signum, signal.SIG_DFL)
+                signal.signal(signum, previous)
             except (ValueError, OSError):  # pragma: no cover
                 pass
         lock.release()

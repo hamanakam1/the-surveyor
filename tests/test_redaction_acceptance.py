@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from surveyor.model import Edge, Node, Topology
 from surveyor.redact import Aliaser, audit, redact_topology
 
@@ -221,3 +223,24 @@ def test_the_same_key_gives_the_same_alias_and_a_different_key_does_not():
 
     assert first.to_dict() == third.to_dict(), "the same key must be stable"
     assert first.to_dict() != second.to_dict(), "a different key must differ"
+
+
+@pytest.mark.parametrize("salt", ["", "key-one"])
+def test_redacting_a_redacted_plat_preserves_the_document_and_graph(salt):
+    topology = _everything_plat()
+    topology.nodes["host:studio"].facts["serial_number"] = {"board": "BOARD-EXAMPLE"}
+    topology.nodes["host:studio"].telemetry["serial"] = "TELEMETRY-EXAMPLE"
+    topology.nodes["service:tcp:8080"].facts["processes"] = ["worker", "logger"]
+    next(edge for edge in topology.edges if edge.relation == "runs").facts["container"] = "payments"
+    first = redact_topology(topology, salt=salt)
+    restored = Topology.from_dict(first.to_dict())
+    second = redact_topology(restored, salt=salt)
+
+    assert second.to_dict() == first.to_dict()
+    assert second.fingerprint == first.fingerprint
+    assert len(second.nodes) == len(topology.nodes)
+    assert len(second.edges) == len(topology.edges)
+    assert not second.dangling_edges()
+    for edge in second.edges:
+        assert edge.source in second.nodes
+        assert edge.target in second.nodes

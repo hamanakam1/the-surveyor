@@ -19,6 +19,7 @@ than quietly keep one of them.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -60,7 +61,7 @@ def compose(plats: Sequence[Topology], *, site: str = "") -> Composition:
         for node in plat.nodes.values():
             existing = merged.nodes.get(node.id)
             if existing is None:
-                merged.add(node)
+                merged.add(deepcopy(node))
                 if node.kind == KIND_HOST:
                     hosts.append(node.id)
                 continue
@@ -73,8 +74,9 @@ def compose(plats: Sequence[Topology], *, site: str = "") -> Composition:
                         f"{existing.source or 'a scanner'} and {other!r} by "
                         f"{node.source or 'a scanner'}"
                     )
+            merged.add(deepcopy(node))
         for edge in plat.edges:
-            merged.connect(edge)
+            merged.connect(deepcopy(edge))
 
     return Composition(
         topology=merged,

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import tempfile
 from collections.abc import Iterator, Mapping
@@ -153,6 +154,8 @@ class LedgerEntry:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> LedgerEntry:
+        if not isinstance(data, Mapping):
+            raise StoreError("journal entry must be a JSON object")
         try:
             entry = cls(
                 seq=int(data["seq"]),
@@ -167,10 +170,10 @@ class LedgerEntry:
                 origin=str(data.get("origin") or "local"),
                 host=str(data.get("host") or ""),
             )
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise StoreError(f"journal entry is malformed: {exc}") from exc
         if not entry.entry_digest:
-            entry.sign()
+            raise StoreError("journal entry is missing entry_digest")
         return entry
 
 
@@ -250,9 +253,10 @@ class Ledger:
         return self.journal.exists()
 
     def _object_path(self, digest: str) -> Path:
-        body = digest.split(":", 1)[-1]
-        if len(body) < 4:
+        match = re.fullmatch(r"(?:sha256:)?([0-9a-f]{64})", digest)
+        if match is None:
             raise StoreError(f"malformed digest {digest!r}")
+        body = match.group(1)
         return self.objects / body[:2] / f"{body}.json"
 
     @contextmanager
@@ -292,20 +296,41 @@ class Ledger:
         if not self.journal.exists():
             return []
         entries: list[LedgerEntry] = []
-        with open(self.journal, encoding="utf-8") as handle:
-            for number, raw in enumerate(handle, start=1):
-                line = raw.strip()
-                if not line:
-                    continue
-                try:
-                    entries.append(LedgerEntry.from_dict(json.loads(line)))
-                except json.JSONDecodeError as exc:
-                    raise StoreError(
-                        f"{self.journal}: line {number} is not valid JSON ({exc.msg})"
-                    ) from exc
+        try:
+            with open(self.journal, encoding="utf-8") as handle:
+                for number, raw in enumerate(handle, start=1):
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(LedgerEntry.from_dict(json.loads(line)))
+                    except json.JSONDecodeError as exc:
+                        raise StoreError(
+                            f"{self.journal}: line {number} is not valid JSON ({exc.msg})"
+                        ) from exc
+        except (OSError, UnicodeError) as exc:
+            raise StoreError(f"journal {self.journal} cannot be read: {exc}") from exc
         if limit is not None and limit >= 0:
             return entries[-limit:] if limit else []
         return entries
+
+    def _check_head(self, tip: LedgerEntry | None) -> None:
+        """Refuse inconsistent tip metadata without repairing either copy."""
+
+        if tip is None:
+            if self.head_file.exists():
+                raise StoreError("HEAD exists but the journal is empty")
+            return
+        try:
+            persisted_head = LedgerEntry.from_dict(
+                json.loads(self.head_file.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError, StoreError) as exc:
+            raise StoreError(f"HEAD is missing, unreadable or malformed: {exc}") from exc
+        if persisted_head.to_dict() != tip.to_dict():
+            raise StoreError("HEAD does not match the newest journal entry")
+        if digest_of(persisted_head.payload()) != persisted_head.entry_digest:
+            raise StoreError("HEAD entry digest does not match its payload")
 
     def head(self) -> LedgerEntry | None:
         """The newest entry *this host* recorded.
@@ -362,7 +387,10 @@ class Ledger:
         path = self._object_path(digest)
         if not path.exists():
             raise StoreError(f"no survey object for {digest}; the ledger is missing data")
-        raw = path.read_text(encoding="utf-8")
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise StoreError(f"object {digest} cannot be read: {exc}") from exc
         expected = digest.split(":", 1)[-1]
         actual = sha256_hex(raw)
         if actual != expected:
@@ -457,6 +485,7 @@ class Ledger:
         with self._locked():
             history = self.history()
             head = history[-1] if history else None
+            self._check_head(head)
             if not force:
                 # Idempotence is per source: a local survey compares with
                 # the last local survey, an import with the last import
@@ -476,6 +505,7 @@ class Ledger:
                         None,
                     )
                 if comparable is not None and comparable.fingerprint == topology.fingerprint:
+                    self.get(comparable.digest)
                     return CommitResult(
                         created=False,
                         entry=comparable,
@@ -484,7 +514,9 @@ class Ledger:
                     )
 
             path = self._object_path(digest)
-            if not path.exists():
+            if path.exists() or any(entry.digest == digest for entry in history):
+                self.get(digest)
+            else:
                 self._atomic_write(path, payload)
 
             entry = LedgerEntry(
@@ -546,7 +578,10 @@ class Ledger:
     def verify(self) -> VerifyReport:
         """Recompute the chain and every object digest."""
 
-        entries = self.history()
+        try:
+            entries = self.history()
+        except StoreError as exc:
+            return VerifyReport(ok=False, problems=[str(exc)])
         report = VerifyReport(ok=True, entries=len(entries))
         if not entries:
             report.problems.append("ledger is empty")
@@ -570,12 +605,23 @@ class Ledger:
             if recomputed != entry.entry_digest:
                 report.problems.append(f"entry seq {entry.seq}: signature mismatch")
                 report.ok = False
-            path = self._object_path(entry.digest)
+            parent = entry.entry_digest
+            try:
+                path = self._object_path(entry.digest)
+            except StoreError as exc:
+                report.problems.append(f"entry seq {entry.seq}: {exc}")
+                report.ok = False
+                continue
             if not path.exists():
                 report.problems.append(f"entry seq {entry.seq}: object {entry.short} missing")
                 report.ok = False
             else:
-                raw = path.read_text(encoding="utf-8")
+                try:
+                    raw = path.read_text(encoding="utf-8")
+                except (OSError, UnicodeError) as exc:
+                    report.problems.append(f"entry seq {entry.seq}: object cannot be read: {exc}")
+                    report.ok = False
+                    continue
                 if "sha256:" + sha256_hex(raw) != entry.digest:
                     report.problems.append(f"entry seq {entry.seq}: object bytes were altered")
                     report.ok = False
@@ -588,18 +634,26 @@ class Ledger:
                         report.problems.append(f"entry seq {entry.seq}: object is not a JSON object")
                         report.ok = False
                     else:
-                        recomputed_fp = "sha256:" + sha256_hex(canonical_json(_structural_payload(document)))
+                        try:
+                            structural = _structural_payload(document)
+                        except (AttributeError, TypeError, ValueError) as exc:
+                            report.problems.append(
+                                f"entry seq {entry.seq}: object has malformed structure: {exc}"
+                            )
+                            report.ok = False
+                            continue
+                        recomputed_fp = "sha256:" + sha256_hex(canonical_json(structural))
                         if recomputed_fp != entry.fingerprint:
                             report.problems.append(
                                 f"entry seq {entry.seq}: recorded fingerprint does not match the object"
                             )
                             report.ok = False
                 seen_digests.add(entry.digest)
-            parent = entry.entry_digest
 
         report.objects = len(seen_digests)
-        tip = self.tip()
-        if tip is None or tip.entry_digest != entries[-1].entry_digest:
-            report.problems.append("HEAD does not point at the newest entry")
+        try:
+            self._check_head(entries[-1])
+        except StoreError as exc:
+            report.problems.append(str(exc))
             report.ok = False
         return report

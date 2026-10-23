@@ -25,9 +25,10 @@ from .model import (
     REL_POWERS,
     REL_RUNS,
     RELATION_LABELS,
+    VOLATILE_FACT_KEYS,
     Topology,
 )
-from .util import clip
+from .util import canonical_json, clip
 
 CRITICAL = "critical"
 WARNING = "warning"
@@ -66,10 +67,10 @@ class Change:
 
     @property
     def summary(self) -> str:
-        if self.entity_type == "edge":
-            return f"{self.action} edge {self.label or self.entity}"
         if self.action == "modified":
             return f"{self.label or self.entity}: {self.field} {clip(self.before)} -> {clip(self.after)}"
+        if self.entity_type == "edge":
+            return f"{self.action} edge {self.label or self.entity}"
         return f"{self.action} {self.label or self.entity}"
 
     def to_dict(self) -> dict[str, Any]:
@@ -181,6 +182,26 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
             )
         return _sorted(report)
 
+    # These plat-level fields participate in the structural fingerprint too.
+    for field_name, old_metadata, new_metadata in (
+        ("site", previous.site, current.site),
+        ("oet_version", previous.schema_version, current.schema_version),
+    ):
+        if old_metadata == new_metadata:
+            continue
+        report.changes.append(
+            Change(
+                action="modified",
+                entity_type="topology",
+                entity="plat",
+                severity=NOTICE,
+                label="Plat",
+                field=field_name,
+                before=old_metadata,
+                after=new_metadata,
+            )
+        )
+
     current_ids = set(current.nodes)
     previous_ids = set(previous.nodes)
 
@@ -215,10 +236,17 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
     for node_id in sorted(current_ids & previous_ids):
         before = previous.nodes[node_id]
         after = current.nodes[node_id]
-        for field_name in sorted(set(before.structural_facts) | set(after.structural_facts)):
-            old = before.structural_facts.get(field_name)
-            new = after.structural_facts.get(field_name)
-            if old == new:
+        before_facts = before.structural_facts
+        after_facts = after.structural_facts
+        for field_name in sorted(set(before_facts) | set(after_facts)):
+            old = before_facts.get(field_name)
+            new = after_facts.get(field_name)
+            # Match fingerprint semantics: JSON true and 1 are different facts.
+            if (
+                field_name in before_facts
+                and field_name in after_facts
+                and canonical_json(old) == canonical_json(new)
+            ):
                 continue
             report.changes.append(
                 Change(
@@ -233,17 +261,23 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
                     layer=after.layer,
                 )
             )
-        if before.label != after.label:
+        for field_name, severity in (
+            ("kind", WARNING), ("layer", WARNING), ("label", NOTICE), ("tags", NOTICE),
+        ):
+            old = getattr(before, field_name)
+            new = getattr(after, field_name)
+            if old == new:
+                continue
             report.changes.append(
                 Change(
                     action="modified",
                     entity_type="node",
                     entity=node_id,
-                    severity=NOTICE,
+                    severity=severity,
                     label=after.label,
-                    field="label",
-                    before=before.label,
-                    after=after.label,
+                    field=field_name,
+                    before=old,
+                    after=new,
                     layer=after.layer,
                 )
             )
@@ -297,6 +331,33 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
                 layer=_edge_layer(current, edge),
             )
         )
+
+    for edge_id in sorted(set(current_edges) & set(previous_edges)):
+        before_edge = previous_edges[edge_id]
+        after_edge = current_edges[edge_id]
+        for field_name in sorted(set(before_edge.facts) | set(after_edge.facts)):
+            old = before_edge.facts.get(field_name)
+            new = after_edge.facts.get(field_name)
+            if (
+                field_name in before_edge.facts
+                and field_name in after_edge.facts
+                and canonical_json(old) == canonical_json(new)
+            ):
+                continue
+            volatile = field_name in VOLATILE_FACT_KEYS
+            report.changes.append(
+                Change(
+                    action="drifted" if volatile else "modified",
+                    entity_type="edge",
+                    entity=edge_id,
+                    severity=INFO if volatile else WARNING,
+                    label=_edge_label(current, after_edge),
+                    field=field_name,
+                    before=old,
+                    after=new,
+                    layer=_edge_layer(current, after_edge),
+                )
+            )
 
     return _sorted(report)
 
@@ -353,7 +414,11 @@ def render_text(report: DiffReport, *, verbose: bool = False) -> str:
     for change in report.changes:
         if change.severity == INFO and not verbose:
             continue
-        layer_name = LAYER_LABELS.get(change.layer, "Unaligned")
+        layer_name = (
+            "Plat metadata"
+            if change.entity_type == "topology"
+            else LAYER_LABELS.get(change.layer, "Unaligned")
+        )
         if layer_name != current_layer:
             if current_layer and hidden_in_layer:
                 lines.append(f"  … {hidden_in_layer} more in {current_layer.lower()}")
@@ -367,9 +432,7 @@ def render_text(report: DiffReport, *, verbose: bool = False) -> str:
             continue
         shown_in_layer += 1
         marker = SEVERITY_MARKERS.get(change.severity, "  ")
-        if change.entity_type == "edge":
-            lines.append(f"  {marker} {change.action} {change.label}")
-        elif change.action == "modified":
+        if change.action == "modified":
             lines.append(
                 f"  {marker} {change.label}: {change.field} "
                 f"{clip(change.before, 48)} -> {clip(change.after, 48)}"

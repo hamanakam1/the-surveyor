@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -39,6 +40,94 @@ def test_force_records_an_unchanged_survey(tmp_ledger, topology):
     assert result.entry.note == "manual"
 
 
+@pytest.mark.parametrize("damage", ["truncated", "missing", "malformed", "stale"])
+@pytest.mark.parametrize("force", [False, True])
+def test_commit_refuses_inconsistent_head_without_repair(tmp_ledger, topology, damage, force):
+    first = tmp_ledger.commit(topology).entry
+    tmp_ledger.commit(topology, force=True)
+    if damage == "truncated":
+        tmp_ledger.journal.write_text(json.dumps(first.to_dict()) + "\n")
+    elif damage == "missing":
+        tmp_ledger.head_file.unlink()
+    elif damage == "malformed":
+        tmp_ledger.head_file.write_text("not JSON")
+    else:
+        tmp_ledger.head_file.write_text(json.dumps(first.to_dict()))
+    journal_before = tmp_ledger.journal.read_bytes()
+    head_before = tmp_ledger.head_file.read_bytes() if tmp_ledger.head_file.exists() else None
+    objects_before = {path: path.read_bytes() for path in tmp_ledger.objects.rglob("*.json")}
+
+    with pytest.raises(StoreError, match="HEAD"):
+        tmp_ledger.commit(topology, force=force)
+
+    assert tmp_ledger.journal.read_bytes() == journal_before
+    assert (tmp_ledger.head_file.read_bytes() if tmp_ledger.head_file.exists() else None) == head_before
+    assert {path: path.read_bytes() for path in tmp_ledger.objects.rglob("*.json")} == objects_before
+
+
+def test_commit_cannot_replace_a_truncated_history_with_a_new_topology(tmp_ledger, topology):
+    first = tmp_ledger.commit(topology).entry
+    topology.nodes["host:lab"].facts["revision"] = 2
+    tmp_ledger.commit(topology)
+    tmp_ledger.journal.write_text(json.dumps(first.to_dict()) + "\n")
+    journal_before = tmp_ledger.journal.read_bytes()
+    head_before = tmp_ledger.head_file.read_bytes()
+    topology.nodes["host:lab"].facts["revision"] = 3
+
+    with pytest.raises(StoreError, match="HEAD"):
+        tmp_ledger.commit(topology)
+
+    assert tmp_ledger.journal.read_bytes() == journal_before
+    assert tmp_ledger.head_file.read_bytes() == head_before
+    assert not tmp_ledger._object_path(topology.digest).exists()
+
+
+def test_commit_refuses_an_empty_journal_with_an_existing_head(tmp_ledger, topology):
+    tmp_ledger.commit(topology)
+    tmp_ledger.journal.write_text("")
+    head_before = tmp_ledger.head_file.read_bytes()
+
+    with pytest.raises(StoreError, match="HEAD"):
+        tmp_ledger.commit(topology)
+
+    assert tmp_ledger.journal.read_text() == ""
+    assert tmp_ledger.head_file.read_bytes() == head_before
+
+
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("corrupt", [None, b"corrupt object", b"\xff"])
+def test_commit_refuses_corrupt_reused_objects_without_repair(tmp_ledger, topology, force, corrupt):
+    entry = tmp_ledger.commit(topology).entry
+    path = tmp_ledger._object_path(entry.digest)
+    if corrupt is None:
+        path.unlink()
+    else:
+        path.write_bytes(corrupt)
+    journal_before = tmp_ledger.journal.read_bytes()
+    head_before = tmp_ledger.head_file.read_bytes()
+
+    with pytest.raises(StoreError, match="object"):
+        tmp_ledger.commit(topology, force=force)
+
+    assert (path.read_bytes() if path.exists() else None) == corrupt
+    assert tmp_ledger.journal.read_bytes() == journal_before
+    assert tmp_ledger.head_file.read_bytes() == head_before
+
+
+def test_unchanged_commit_checks_the_previous_object_even_when_time_changes(tmp_ledger, topology):
+    entry = tmp_ledger.commit(topology).entry
+    path = tmp_ledger._object_path(entry.digest)
+    path.write_text("corrupt object")
+    topology.generated_at = "2027-01-01T00:00:00Z"
+
+    with pytest.raises(StoreError, match="object"):
+        tmp_ledger.commit(topology)
+
+    assert len(tmp_ledger.history()) == 1
+    assert path.read_text() == "corrupt object"
+    assert not tmp_ledger._object_path(topology.digest).exists()
+
+
 def test_verify_passes_on_a_fresh_chain(tmp_ledger, topology):
     tmp_ledger.commit(topology)
     topology.nodes["workload:docker:web"].facts["image"] = "nginx:1.27"
@@ -60,6 +149,131 @@ def test_verify_detects_object_tampering(tmp_ledger, topology):
     assert any("altered" in problem for problem in report.problems)
 
 
+@pytest.mark.parametrize("location", ["journal", "object"])
+def test_verify_reports_non_utf8_data_without_modifying_it(tmp_ledger, topology, location):
+    entry = tmp_ledger.commit(topology).entry
+    path = tmp_ledger.journal if location == "journal" else tmp_ledger._object_path(entry.digest)
+    path.write_bytes(b"\xff")
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any(location in problem for problem in report.problems)
+    assert path.read_bytes() == b"\xff"
+
+
+@pytest.mark.parametrize("location", ["journal", "object"])
+def test_verify_cli_returns_json_for_non_utf8_data(tmp_ledger, topology, location, capsys):
+    from surveyor.cli import main
+
+    entry = tmp_ledger.commit(topology).entry
+    path = tmp_ledger.journal if location == "journal" else tmp_ledger._object_path(entry.digest)
+    path.write_bytes(b"\xff")
+
+    assert main(["--store", str(tmp_ledger.root), "verify", "--json"]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["ok"] is False
+    assert any(location in problem for problem in report["problems"])
+    assert path.read_bytes() == b"\xff"
+
+
+def test_history_wraps_journal_read_errors(tmp_ledger, topology, monkeypatch):
+    import builtins
+
+    tmp_ledger.commit(topology)
+    original_open = builtins.open
+
+    def open_file(path, *args, **kwargs):
+        if path == tmp_ledger.journal:
+            raise PermissionError("synthetic permission failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", open_file)
+    with pytest.raises(StoreError, match=r"journal.*cannot be read"):
+        tmp_ledger.history()
+    assert tmp_ledger.verify().ok is False
+
+
+def test_get_preserves_full_bare_digest_support(tmp_ledger, topology):
+    entry = tmp_ledger.commit(topology).entry
+    assert tmp_ledger.get(entry.digest.removeprefix("sha256:")).to_dict() == topology.to_dict()
+
+
+def test_verify_reports_an_overflowing_journal_sequence(tmp_ledger, topology):
+    entry = tmp_ledger.commit(topology).entry.to_dict()
+    encoded = json.dumps(entry).replace('"seq": 0', '"seq": 1e999') + "\n"
+    tmp_ledger.journal.write_text(encoded)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("malformed" in problem for problem in report.problems)
+    assert tmp_ledger.journal.read_text() == encoded
+
+
+def test_verify_reports_unreadable_objects_and_continues(tmp_ledger, topology, monkeypatch):
+    entry = tmp_ledger.commit(topology).entry
+    blocked = tmp_ledger._object_path(entry.digest)
+    topology.site = "second-site"
+    tmp_ledger.commit(topology)
+    original_read = Path.read_text
+
+    def read_text(path, *args, **kwargs):
+        if path == blocked:
+            raise PermissionError("synthetic permission failure")
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert report.entries == 2
+    assert any("object" in problem and "read" in problem for problem in report.problems)
+    assert not any("parent" in problem for problem in report.problems)
+
+
+@pytest.mark.parametrize("digest", ["x", "sha256:../escape", "/absolute/path", "md5:" + "a" * 64])
+def test_verify_reports_malformed_object_digests(tmp_ledger, topology, digest):
+    entry = tmp_ledger.commit(topology).entry
+    entry.digest = digest
+    entry.sign()
+    encoded = json.dumps(entry.to_dict())
+    tmp_ledger.journal.write_text(encoded + "\n")
+    tmp_ledger.head_file.write_text(encoded)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("malformed digest" in problem for problem in report.problems)
+    with pytest.raises(StoreError, match="malformed digest"):
+        tmp_ledger.get(digest)
+    assert tmp_ledger.journal.read_text() == encoded + "\n"
+
+
+@pytest.mark.parametrize("nodes", [["bad-node"], {"id": "bad-node"}, [{"facts": [1]}]])
+def test_verify_reports_malformed_object_structure(tmp_ledger, topology, nodes):
+    from surveyor.util import canonical_json, digest_of
+
+    entry = tmp_ledger.commit(topology).entry
+    document = topology.to_dict()
+    document["nodes"] = nodes
+    entry.digest = digest_of(document)
+    entry.sign()
+    path = tmp_ledger._object_path(entry.digest)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = canonical_json(document)
+    path.write_text(payload)
+    encoded = json.dumps(entry.to_dict())
+    tmp_ledger.journal.write_text(encoded + "\n")
+    tmp_ledger.head_file.write_text(encoded)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("structure" in problem for problem in report.problems)
+    assert path.read_text() == payload
+
+
 def test_verify_detects_journal_edits(tmp_ledger, topology):
     tmp_ledger.commit(topology)
     lines = tmp_ledger.journal.read_text().strip().splitlines()
@@ -69,6 +283,96 @@ def test_verify_detects_journal_edits(tmp_ledger, topology):
     report = tmp_ledger.verify()
     assert report.ok is False
     assert any("signature mismatch" in problem for problem in report.problems)
+
+
+def test_verify_detects_a_truncated_journal_against_persisted_head(tmp_ledger, topology):
+    tmp_ledger.commit(topology)
+    tmp_ledger.commit(topology, force=True)
+    lines = tmp_ledger.journal.read_text().splitlines()
+    tmp_ledger.journal.write_text(lines[0] + "\n")
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+
+
+def test_verify_detects_a_stale_persisted_head(tmp_ledger, topology):
+    first = tmp_ledger.commit(topology).entry
+    tmp_ledger.commit(topology, force=True)
+    tmp_ledger.head_file.write_text(json.dumps(first.to_dict()))
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+
+
+def test_verify_detects_a_missing_head(tmp_ledger, topology):
+    tmp_ledger.commit(topology)
+    tmp_ledger.head_file.unlink()
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+    assert not tmp_ledger.head_file.exists()
+
+
+@pytest.mark.parametrize("head", ["not JSON", "[]", "{}"])
+def test_verify_reports_a_malformed_head(tmp_ledger, topology, head):
+    tmp_ledger.commit(topology)
+    tmp_ledger.head_file.write_text(head)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+    assert tmp_ledger.head_file.read_text() == head
+
+
+def test_verify_checks_head_payload_not_only_its_digest(tmp_ledger, topology):
+    entry = tmp_ledger.commit(topology).entry.to_dict()
+    entry["note"] = "rewritten HEAD"
+    tmp_ledger.head_file.write_text(json.dumps(entry))
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+
+
+@pytest.mark.parametrize("missing_digest", [None, ""])
+def test_unsigned_journal_entries_are_rejected_without_repair(
+    tmp_ledger, topology, missing_digest
+):
+    entry = tmp_ledger.commit(topology).entry.to_dict()
+    entry["note"] = "rewritten history"
+    if missing_digest is None:
+        del entry["entry_digest"]
+    else:
+        entry["entry_digest"] = missing_digest
+    unsigned = json.dumps(entry) + "\n"
+    tmp_ledger.journal.write_text(unsigned)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("entry_digest" in problem for problem in report.problems)
+    with pytest.raises(StoreError, match="entry_digest"):
+        tmp_ledger.history()
+    assert tmp_ledger.journal.read_text() == unsigned
+
+
+def test_verify_rejects_a_head_with_a_missing_digest(tmp_ledger, topology):
+    entry = tmp_ledger.commit(topology).entry.to_dict()
+    del entry["entry_digest"]
+    tmp_ledger.head_file.write_text(json.dumps(entry))
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
 
 
 def test_verify_detects_a_journal_fingerprint_that_contradicts_the_object(tmp_ledger, topology):

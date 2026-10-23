@@ -74,7 +74,7 @@ corrupt a recorded plat.
 
 Three concentric promises:
 
-1. **A scanner never kills a survey.** Each scanner runs in its own thread and
+1. **Scanner-reported failures do not kill a survey.** Each scanner runs in its own thread and
    is wrapped by `ScannerSpec.run`; exceptions become a failed `ScanResult`
    with `ok: false`. The plat still gets everything the other scanners saw.
 2. **A probe never kills a scanner.** `probe.run` converts missing binaries,
@@ -118,16 +118,45 @@ An entry is:
 }
 ```
 
-`entry_digest` is the digest of the entry *without* it. Editing any field, or
-deleting an entry, breaks the chain and `surveyor verify` says so. `parent`
-being the previous `entry_digest` (not seq) means entries cannot be reordered
-either.
+`entry_digest` is the digest of the entry *without* it. Editing a field without
+recomputing its digest, or deleting an entry from the middle, breaks the chain
+and `surveyor verify` says so. `parent` being the previous `entry_digest` (not
+seq) means entries cannot be reordered either.
+
+Verification also reads the persisted `HEAD` file and compares its complete
+entry with the journal's newest entry. A truncated journal or a stale, missing,
+or malformed `HEAD` therefore fails verification. Entries without an
+`entry_digest` are rejected; reading never supplies a replacement digest or
+repairs the ledger. The hashes are unkeyed: someone who can rewrite the journal,
+objects and `HEAD` together can construct another internally consistent record.
+
+Before returning an unchanged result or appending an entry, a commit checks
+that persisted `HEAD` agrees with the journal tip while holding the writer lock.
+It also verifies the object used for an unchanged result, or an existing object
+that the new entry would reuse. Missing or corrupt data stops the commit;
+existing bytes are preserved. This prevents a subsequent write from concealing
+a truncated journal or claiming success for an unreadable plat. These checks
+cover the tip and objects the commit relies on; `surveyor verify` remains the
+check of the entire historical chain and all referenced objects.
+
+Verification reports unreadable or non-UTF-8 journals and objects as failures,
+including in JSON mode. An invalid object address or malformed object structure
+also produces a diagnostic. Object addresses must be complete lowercase SHA-256
+digests, with an optional `sha256:` prefix; they cannot name arbitrary paths.
+When an object cannot be checked, verification continues through the remaining
+entries and persisted `HEAD`. It never repairs the offending data.
 
 ## Concurrency
 
-- Scanners fan out through `ThreadPoolExecutor` at eight workers; the whole fan
-  out has a `scanner_timeout + 5s` deadline. Scanners that overrun are recorded
-  as timed out and the survey proceeds.
+- Scanners fan out through `ThreadPoolExecutor` at eight workers, with a
+  `scanner_timeout + 5s` collection deadline. **Known limitation:** a collection
+  timeout currently raises before partial timeout results are recorded, and
+  executor cleanup waits for running threads. An overdue scanner can therefore
+  delay or abort the survey. Per-probe subprocess timeouts do not bound the sum
+  of sequential probes in a scanner. Returning without waiting would allow
+  unfinished workers to accumulate across daemon cycles. A hard execution
+  deadline needs worker lifecycle control, or cooperative cancellation with
+  absolute deadlines and prevention of overlapping runs.
 - Commits take an exclusive `flock` on the ledger's `lock` file, so two
   processes cannot interleave a HEAD read and a journal append.
 - Notifications are sent after the journal entry is written, never before, so a

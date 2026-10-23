@@ -165,25 +165,27 @@ def narrative(report: DiffReport, topology: Topology, previous: Topology | None)
 
 def _bullets(report: DiffReport, severity_filter: set[str]) -> list[str]:
     lines: list[str] = []
-    for layer in LAYERS:
+    # Plat metadata is structural but does not belong to an OET layer.
+    for layer in (*LAYERS, ""):
         layer_changes = [
             change
             for change in report.changes
-            if change.layer == layer and change.severity in severity_filter
+            if (change.layer == layer if layer else change.entity_type == "topology")
+            and change.severity in severity_filter
         ]
         if not layer_changes:
             continue
-        lines.append(f"### {LAYER_LABELS[layer]}")
+        lines.append(f"### {LAYER_LABELS.get(layer, 'Plat metadata')}")
         lines.append("")
         for change in layer_changes[:10]:
             name = change.label or change.entity
-            if change.entity_type == "edge":
-                lines.append(f"- **{change.action}** {name}")
-            elif change.action == "modified":
+            if change.action == "modified":
                 lines.append(
                     f"- `{name}` — {change.field}: "
                     f"`{clip(change.before, 60)}` → `{clip(change.after, 60)}`"
                 )
+            elif change.entity_type == "edge":
+                lines.append(f"- **{change.action}** {name}")
             elif change.action == "drifted":
                 keys = ", ".join(str(key) for key in (change.after or [])) or "telemetry"
                 lines.append(f"- `{name}` drifted ({keys})")

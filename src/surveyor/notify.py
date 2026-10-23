@@ -21,6 +21,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from http.client import HTTPException
 from typing import Any
 from urllib.parse import urlparse
 
@@ -61,16 +62,27 @@ class Notification:
 def mask_url(url: str) -> str:
     """Hide the token part of a webhook URL while keeping it recognisable."""
 
-    parsed = urlparse(url)
-    if not parsed.netloc:
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError:
         return "***"
-    return f"{parsed.scheme}://{parsed.netloc}/***"
+    if not host or parsed.scheme not in {"http", "https"}:
+        return "***"
+    authority = f"[{host}]" if ":" in host else host
+    if port is not None:
+        authority += f":{port}"
+    return f"{parsed.scheme}://{authority}/***"
 
 
 def endpoint_style(url: str) -> str:
     """Pick a payload dialect for a known webhook host."""
 
-    host = (urlparse(url).netloc or "").lower()
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return "generic"
     if "hooks.slack.com" in host:
         return "slack"
     if "discord.com" in host or "discordapp.com" in host:
@@ -268,7 +280,11 @@ class Notifier:
     def _deliver(self, endpoint: str, payload: dict[str, Any]) -> Notification:
         body = json.dumps(payload, default=str).encode("utf-8")
         if len(body) > _MAX_PAYLOAD_BYTES:
-            body = body[:_MAX_PAYLOAD_BYTES]
+            return Notification(
+                endpoint=mask_url(endpoint),
+                ok=False,
+                error=f"payload exceeds {_MAX_PAYLOAD_BYTES} byte limit",
+            )
         if self.dry_run:
             return Notification(endpoint=mask_url(endpoint), ok=True, status=0, attempts=0)
 
@@ -277,28 +293,33 @@ class Notifier:
         status: int | None = None
         for attempt in range(max(1, self.retries + 1)):
             attempts += 1
-            request = urllib.request.Request(  # noqa: S310 - operator-configured endpoint
-                endpoint,
-                data=body,
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "the-surveyor/1.0",
-                },
-                method="POST",
-            )
             try:
+                request = urllib.request.Request(  # noqa: S310 - operator-configured endpoint
+                    endpoint,
+                    data=body,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "the-surveyor/1.0",
+                    },
+                    method="POST",
+                )
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310 - operator-configured endpoint
                     status = int(getattr(response, "status", 200) or 200)
                     response.read(4096)
                 return Notification(endpoint=mask_url(endpoint), ok=True, status=status, attempts=attempts)
             except urllib.error.HTTPError as exc:
                 status = exc.code
+                exc.close()
                 last_error = f"HTTP {exc.code}"
                 if exc.code < 500:
                     break  # a 4xx will not fix itself
+            except (ValueError, HTTPException) as exc:
+                last_error = type(exc).__name__
+                break  # malformed requests cannot be repaired by retrying
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
-                last_error = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
-            if attempt < max(1, self.retries + 1) and self.backoff:
+                # Transport exception text may contain the complete endpoint.
+                last_error = type(exc).__name__
+            if attempt + 1 < max(1, self.retries + 1) and self.backoff:
                 time.sleep(self.backoff)
         return Notification(
             endpoint=mask_url(endpoint),

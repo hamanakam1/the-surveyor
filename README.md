@@ -103,9 +103,10 @@ regenerates the set. Nothing in it is hand-drawn.
  └─────────┘      └──────────────┘    └───────────┘     └────────────┘    └──────────────┘
 ```
 
-1. **Discover** — scanners observe one dimension each, concurrently, with a
-   hard time budget. A scanner that fails or times out is recorded and the
-   survey continues.
+1. **Discover** — scanners observe one dimension each, concurrently, with
+   timeouts on subprocess probes. Scanner-reported failures are recorded and
+   the survey continues; aggregate scanner deadline limitations are described
+   below.
 2. **Compile** — nodes merge by stable id, dangling edges are dropped with a
    note, and the document is stamped with a structural fingerprint.
 3. **Compare** — changes are classified `critical`, `warning`, `notice`, or
@@ -142,6 +143,10 @@ Useful flags: `--redact` (publishable plats), `--no-save` (look, don't record),
 `--scanners host,network` (narrow the survey), `--json` (script it),
 `--store PATH` (put the ledger somewhere else).
 
+Digest references name stored objects. Multiple forced surveys or imports of the
+same object resolve to the newest matching entry's label. A short digest prefix
+is ambiguous only when it matches more than one distinct object.
+
 A modern edge box has hundreds of nodes, and most questions are about a
 part of it. `surveyor show` can cut the plat down:
 
@@ -164,8 +169,12 @@ rather than a picture of part of one.
 | `workloads` | workload | containers (Docker, podman, nerdctl), the local model server and its models, listening TCP and UDP sockets |
 | `services` | workload | systemd units and launchd daemons |
 
-Each scanner is independently failable: if one times out or fails, the
-survey carries on without it and says so.
+Each scanner reports its own failures, allowing the survey to carry on with
+the observations that succeeded. The aggregate scanner deadline is currently
+a collection timeout, not a hard execution limit: an overdue scanner thread
+can delay or abort the survey. See the
+[concurrency limitations](docs/architecture.md#concurrency) before relying on
+a bounded survey duration.
 
 ### When a layer is empty
 
@@ -215,6 +224,12 @@ key lives in `salt` beside the ledger it protects, readable only by its owner.
 An unkeyed digest of a hostname can be reversed with a word list; a keyed one
 cannot.
 
+Redacting an already redacted plat preserves its aliases, graph references,
+and fingerprint. Values matching the generated `sha256:` plus ten lowercase
+hex digits are treated as existing aliases. To produce aliases with a new key,
+redact the original plat; changing keys on an already redacted document cannot
+recover the original identifiers.
+
 `surveyor redact --audit` reports anything that survived — a declared
 identifier that failed to be removed, or a value that merely looks like one
 (an email address, a home directory, a long hex digest). It exits non-zero,
@@ -239,6 +254,17 @@ disturb this host's own history: `HEAD` is still the newest survey **this**
 host took, and `HEAD~1` is the previous one, skipping whatever arrived from
 elsewhere in between. Re-importing the same plat changes nothing, exactly
 as re-surveying an unchanged machine changes nothing.
+
+Import checks the document's shape and any declared structural fingerprint
+before creating or updating the ledger. A mismatched fingerprint is rejected
+even with `--force`; omitting the optional fingerprint lets the importer compute
+it from the document.
+Non-finite numbers (`NaN`, `Infinity`, and numeric overflow) are rejected
+throughout the document, including observations and extension fields. Validation
+reports their paths, and import rejects them even with `--force`.
+Plat-file reads also report invalid UTF-8, malformed JSON, and I/O failures
+with the file path and error exit code; failed reads preserve existing output
+files and ledger contents.
 
 ### Compose a site
 
@@ -318,6 +344,10 @@ masked everywhere they might be printed -- a webhook URL *is* a credential --
 and a failed delivery is reported, never raised: a dead webhook cannot stop a
 survey or a daemon.
 
+Failure reports include HTTP status codes or transport exception names, with
+URL credentials and exception text omitted. Payloads larger than 120,000 bytes
+are rejected before delivery; the notifier never sends a truncated JSON body.
+
 The gate is the same severity ladder the diff uses. `notice` would fire on the
 very first plat, `critical` only when a host or a power feed disappears, and
 `never` switches notifications off while leaving the rest of the tool alone.
@@ -329,6 +359,10 @@ very first plat, `critical` only when a host or a power feed disappears, and
 hashed into the fingerprint. `telemetry` describes the moment (load, charge,
 uptime) and never is. A five-minute daemon therefore writes entries when the
 infrastructure moves, not 288 times a day.
+
+The site and OET version also participate in the structural fingerprint.
+Changes to either appear as notices under **Plat metadata** in diffs and
+changelogs; `diff --exit-code` returns 3 for those changes too.
 
 **Idempotence is a property, not a promise.** Same fingerprint as HEAD means no
 journal entry, no changelog, no notification. `--force` exists for operators who
@@ -438,7 +472,13 @@ ollama_model = "llama3.2:3b"
 
 Resolution order: defaults → config file → `SURVEYOR_*` environment variables →
 CLI flags. `surveyor init` writes the file; `surveyor --config ./x.toml scan`
-uses it.
+uses it. Generated TOML preserves Unicode site names and paths, including
+characters outside the Basic Multilingual Plane.
+
+`interval` and `max_workloads` require positive integers; booleans and fractional
+numbers are rejected. Environment and mapping inputs may use integer strings.
+Daemon `--interval` and `--max-cycles` also require positive integers and are
+checked before a ledger is opened or a survey starts.
 
 ### Run it forever
 
