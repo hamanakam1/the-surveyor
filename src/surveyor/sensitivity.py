@@ -22,6 +22,11 @@ Three things are deliberately *not* identifiers, and are kept in the clear:
 
 from __future__ import annotations
 
+import re
+
+#: Only the exact short digest emitted by the redactor is an existing alias.
+_ALIAS = re.compile(r"sha256:[0-9a-f]{10}")
+
 #: Fact and telemetry keys whose value identifies the thing it describes,
 #: whatever kind of node the value sits on.
 SENSITIVE_KEYS: frozenset[str] = frozenset(
@@ -75,6 +80,12 @@ def is_sensitive(kind: str, key: str) -> bool:
     return key in SENSITIVE_KEYS_BY_KIND.get(kind, frozenset())
 
 
+def is_alias(value: str) -> bool:
+    """Whether a complete value has the redactor's generated alias shape."""
+
+    return _ALIAS.fullmatch(value) is not None
+
+
 def id_name_component(node_id: str) -> str:
     """The name-bearing component of a node id, if it has one.
 
@@ -85,7 +96,8 @@ def id_name_component(node_id: str) -> str:
     """
 
     parts = node_id.split(":")
-    if parts[1:2] == ["sha256"]:
+    name_index = 2 if node_id.startswith("workload:") else 1
+    if is_alias(":".join(parts[name_index:name_index + 2])):
         # Already an alias; there is no name left in this id.
         return ""
     if node_id.startswith("host:") and len(parts) >= 2:

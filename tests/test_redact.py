@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from surveyor.model import Edge, Node, Topology
 from surveyor.redact import (
     Aliaser,
@@ -57,6 +61,26 @@ def test_alias_differs_between_ledgers():
 def test_alias_collapses_a_name_and_its_slug():
     aliaser = Aliaser("salt")
     assert aliaser.alias("qwen3.8:32b") == aliaser.alias("qwen3-8-32b")
+
+
+def test_aliasing_an_existing_generated_alias_preserves_it():
+    alias = Aliaser("salt").alias("example-host")
+    aliaser = Aliaser("salt")
+    assert aliaser.alias(alias) == alias
+    assert list(aliaser.known()) == []
+
+
+@pytest.mark.parametrize("identifier", [
+    "sha256:private-host",
+    "sha256:0123456789suffix",
+    "sha256:0123456789abcdef",
+    "sha256:012345678",
+])
+def test_sha256_prefix_alone_does_not_exempt_identifiers(identifier):
+    survey = Topology(site="x", observations={"warnings": [identifier]})
+    survey.add(Node("host:node", "host", "node", facts={"serial": identifier}))
+    redacted = redact_topology(survey, salt="k")
+    assert identifier not in json.dumps(redacted.to_dict())
 
 
 def test_redaction_preserves_structure_but_hides_identifiers(topology):
@@ -328,3 +352,29 @@ def test_audit_is_quiet_on_a_clean_plat(topology):
     redacted = redact_topology(topology, salt="k")
     findings = audit(topology, redacted, Aliaser("k"))
     assert not [finding for finding in findings if finding.kind == "known-identifier"]
+
+
+@pytest.mark.parametrize("identifier", [
+    "deadbeef12345678",
+    "DEADBEEF12345678",
+    "sha256:" + "abcd" * 16,
+])
+def test_audit_reports_long_hex_in_facts_and_observations(identifier):
+    survey = Topology(site="x", observations={"warnings": [f"trace {identifier}"]})
+    survey.add(Node("host:node", "host", "node", facts={"fingerprint": identifier}))
+    redacted = redact_topology(survey, salt="k")
+    findings = [
+        finding for finding in audit(survey, redacted, Aliaser("k"))
+        if finding.kind == "long-hex"
+    ]
+    assert {finding.where for finding in findings} == {
+        "plat.nodes[0].facts.fingerprint", "plat.observations.warnings[0]"
+    }
+    assert {finding.value for finding in findings} == {identifier.removeprefix("sha256:")}
+
+
+def test_audit_does_not_report_generated_fingerprint_or_short_aliases():
+    survey = Topology(site="x")
+    survey.add(Node("host:node", "host", "node", facts={"hostname": "node"}))
+    redacted = redact_topology(survey, salt="k")
+    assert audit(survey, redacted, Aliaser("k")) == []

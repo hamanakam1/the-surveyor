@@ -215,6 +215,12 @@ key lives in `salt` beside the ledger it protects, readable only by its owner.
 An unkeyed digest of a hostname can be reversed with a word list; a keyed one
 cannot.
 
+Redacting an already redacted plat preserves its aliases, graph references,
+and fingerprint. Values matching the generated `sha256:` plus ten lowercase
+hex digits are treated as existing aliases. To produce aliases with a new key,
+redact the original plat; changing keys on an already redacted document cannot
+recover the original identifiers.
+
 `surveyor redact --audit` reports anything that survived — a declared
 identifier that failed to be removed, or a value that merely looks like one
 (an email address, a home directory, a long hex digest). It exits non-zero,
