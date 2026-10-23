@@ -130,6 +130,15 @@ or malformed `HEAD` therefore fails verification. Entries without an
 repairs the ledger. The hashes are unkeyed: someone who can rewrite the journal,
 objects and `HEAD` together can construct another internally consistent record.
 
+Before returning an unchanged result or appending an entry, a commit checks
+that persisted `HEAD` agrees with the journal tip while holding the writer lock.
+It also verifies the object used for an unchanged result, or an existing object
+that the new entry would reuse. Missing or corrupt data stops the commit;
+existing bytes are preserved. This prevents a subsequent write from concealing
+a truncated journal or claiming success for an unreadable plat. These checks
+cover the tip and objects the commit relies on; `surveyor verify` remains the
+check of the entire historical chain and all referenced objects.
+
 ## Concurrency
 
 - Scanners fan out through `ThreadPoolExecutor` at eight workers; the whole fan

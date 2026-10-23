@@ -309,6 +309,24 @@ class Ledger:
             return entries[-limit:] if limit else []
         return entries
 
+    def _check_head(self, tip: LedgerEntry | None) -> None:
+        """Refuse inconsistent tip metadata without repairing either copy."""
+
+        if tip is None:
+            if self.head_file.exists():
+                raise StoreError("HEAD exists but the journal is empty")
+            return
+        try:
+            persisted_head = LedgerEntry.from_dict(
+                json.loads(self.head_file.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError, StoreError) as exc:
+            raise StoreError(f"HEAD is missing, unreadable or malformed: {exc}") from exc
+        if persisted_head.to_dict() != tip.to_dict():
+            raise StoreError("HEAD does not match the newest journal entry")
+        if digest_of(persisted_head.payload()) != persisted_head.entry_digest:
+            raise StoreError("HEAD entry digest does not match its payload")
+
     def head(self) -> LedgerEntry | None:
         """The newest entry *this host* recorded.
 
@@ -364,7 +382,10 @@ class Ledger:
         path = self._object_path(digest)
         if not path.exists():
             raise StoreError(f"no survey object for {digest}; the ledger is missing data")
-        raw = path.read_text(encoding="utf-8")
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise StoreError(f"object {digest} cannot be read: {exc}") from exc
         expected = digest.split(":", 1)[-1]
         actual = sha256_hex(raw)
         if actual != expected:
@@ -459,6 +480,7 @@ class Ledger:
         with self._locked():
             history = self.history()
             head = history[-1] if history else None
+            self._check_head(head)
             if not force:
                 # Idempotence is per source: a local survey compares with
                 # the last local survey, an import with the last import
@@ -478,6 +500,7 @@ class Ledger:
                         None,
                     )
                 if comparable is not None and comparable.fingerprint == topology.fingerprint:
+                    self.get(comparable.digest)
                     return CommitResult(
                         created=False,
                         entry=comparable,
@@ -486,7 +509,9 @@ class Ledger:
                     )
 
             path = self._object_path(digest)
-            if not path.exists():
+            if path.exists() or any(entry.digest == digest for entry in history):
+                self.get(digest)
+            else:
                 self._atomic_write(path, payload)
 
             entry = LedgerEntry(
@@ -604,14 +629,8 @@ class Ledger:
 
         report.objects = len(seen_digests)
         try:
-            persisted_head = LedgerEntry.from_dict(
-                json.loads(self.head_file.read_text(encoding="utf-8"))
-            )
-        except (OSError, ValueError, StoreError) as exc:
-            report.problems.append(f"HEAD is missing, unreadable or malformed: {exc}")
+            self._check_head(entries[-1])
+        except StoreError as exc:
+            report.problems.append(str(exc))
             report.ok = False
-        else:
-            if persisted_head.to_dict() != entries[-1].to_dict():
-                report.problems.append("HEAD does not match the newest journal entry")
-                report.ok = False
         return report
