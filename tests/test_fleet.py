@@ -101,6 +101,30 @@ def test_hosts_are_tagged_with_their_site():
     assert "site:site-a" in shed_node.tags
 
 
+def test_tagging_a_composition_preserves_the_source_plat():
+    source = _host_plat("shed", "site-a", "f0:18:98:11:22:33", "192.168.7.1")
+    original_digest = source.digest
+    composition = compose([source])
+
+    tag_hosts(composition.topology, host_sites([source]))
+
+    assert source.digest == original_digest
+    assert source.nodes["host:shed"].tags == ()
+    assert composition.topology.nodes["host:shed"].tags == ("site:site-a",)
+
+
+def test_merging_edge_facts_does_not_modify_an_input_plat():
+    first = _host_plat("shed", "site-a", "f0:18:98:11:22:33", "192.168.7.1")
+    second = Topology.from_dict(first.to_dict())
+    second.edges[0].facts["priority"] = 1
+    originals = (first.digest, second.digest)
+
+    composition = compose([first, second])
+
+    assert composition.topology.edges[0].facts["priority"] == 1
+    assert (first.digest, second.digest) == originals
+
+
 def test_the_summary_says_what_was_composed():
     shed = _host_plat("shed", "site-a", "f0:18:98:11:22:33", "192.168.7.1")
     composition = compose([shed], site="edge")
