@@ -345,6 +345,10 @@ hashed into the fingerprint. `telemetry` describes the moment (load, charge,
 uptime) and never is. A five-minute daemon therefore writes entries when the
 infrastructure moves, not 288 times a day.
 
+The site and OET version also participate in the structural fingerprint.
+Changes to either appear as notices under **Plat metadata** in diffs and
+changelogs; `diff --exit-code` returns 3 for those changes too.
+
 **Idempotence is a property, not a promise.** Same fingerprint as HEAD means no
 journal entry, no changelog, no notification. `--force` exists for operators who
 want the heartbeat anyway.

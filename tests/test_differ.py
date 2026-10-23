@@ -18,6 +18,66 @@ def test_identical_surveys_have_no_changes(topology):
     assert report.headline() == "No change. The map holds."
 
 
+@pytest.mark.parametrize(
+    ("attribute", "field", "value"),
+    [("site", "site", "other-site"), ("schema_version", "oet_version", "1.1")],
+)
+def test_plat_metadata_changes_are_structural_notices(topology, attribute, field, value):
+    changed = Topology.from_dict(topology.to_dict())
+    setattr(changed, attribute, value)
+
+    report = diff_topologies(topology, changed)
+
+    assert changed.fingerprint != topology.fingerprint
+    assert report.structural is True
+    assert len(report.changes) == 1
+    change = report.changes[0]
+    assert (change.entity_type, change.entity, change.field) == ("topology", "plat", field)
+    assert (change.action, change.severity, change.layer) == ("modified", NOTICE, "")
+    assert change.before == getattr(topology, attribute)
+    assert change.after == value
+    assert report.to_dict()["changes"][0]["field"] == field
+    text = render_text(report)
+    assert "PLAT METADATA" in text
+    assert f"{field} {getattr(topology, attribute)} -> {value}" in text
+    assert "UNALIGNED" not in text
+
+
+@pytest.mark.parametrize(
+    ("attribute", "value"),
+    [("generated_at", "2026-01-02T00:00:00Z"), ("observations", {"duration_ms": 42})],
+)
+def test_observation_metadata_stays_outside_structure(topology, attribute, value):
+    changed = Topology.from_dict(topology.to_dict())
+    setattr(changed, attribute, value)
+
+    assert changed.fingerprint == topology.fingerprint
+    assert diff_topologies(topology, changed).changes == []
+
+
+@pytest.mark.parametrize(
+    ("attribute", "value"), [("site", "other-site"), ("schema_version", "1.1")],
+)
+def test_metadata_change_sets_cli_structural_exit_code(topology, attribute, value, tmp_path, capsys):
+    changed = Topology.from_dict(topology.to_dict())
+    setattr(changed, attribute, value)
+    old_file = tmp_path / "previous.oet.json"
+    new_file = tmp_path / "current.oet.json"
+    old_file.write_text(json.dumps(topology.to_dict()))
+    new_file.write_text(json.dumps(changed.to_dict()))
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('scribe = "template"\n')
+
+    exit_code = cli.main([
+        "--config", str(config_file), "--store", str(tmp_path / "ledger"),
+        "diff", "--exit-code", "--format", "json",
+        "--from", str(old_file), "--to", str(new_file),
+    ])
+
+    assert exit_code == cli.EXIT_CHANGED
+    assert json.loads(capsys.readouterr().out)["structural"] is True
+
+
 def test_added_workload_is_a_notice(topology):
     extended = Topology.from_dict(topology.to_dict())
     extended.add(Node("workload:docker:api", "workload", "api", facts={"runtime": "docker", "image": "api:1"}))

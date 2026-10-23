@@ -80,6 +80,52 @@ def test_markdown_contains_facts_and_no_model_when_template(topology):
     assert "scribe: template" in output.markdown
 
 
+@pytest.mark.parametrize(
+    ("attribute", "field", "value"),
+    [("site", "site", "other-site"), ("schema_version", "oet_version", "1.1")],
+)
+def test_markdown_reports_plat_metadata_changes(topology, attribute, field, value):
+    changed = Topology.from_dict(topology.to_dict())
+    setattr(changed, attribute, value)
+    report = diff_topologies(topology, changed)
+
+    output = compose_changelog(report, changed, previous=topology, backend="template")
+
+    assert "### Plat metadata" in output.markdown
+    assert f"{field}: `{getattr(topology, attribute)}` → `{value}`" in output.markdown
+    assert "1 notice" in output.markdown
+    assert "Nothing structural moved" not in output.narrative
+    assert "weather" not in output.narrative
+
+
+def test_metadata_group_keeps_node_changes_in_their_layer(topology):
+    changed = change_fact(topology, "workload:docker:web", "image", "nginx:1.27")
+    changed.site = "other-site"
+    report = diff_topologies(topology, changed)
+
+    output = compose_changelog(report, changed, previous=topology, backend="template")
+
+    assert "### Workloads" in output.markdown
+    assert "### Plat metadata" in output.markdown
+    assert "image: `nginx:1.25` → `nginx:1.27`" in output.markdown
+    assert "site: `test-site` → `other-site`" in output.markdown
+
+
+def test_markdown_keeps_each_modified_edge_fact(topology):
+    changed = Topology.from_dict(topology.to_dict())
+    power = next(edge for edge in changed.edges if edge.source == "power:ac")
+    power.facts["priority"] = 9
+    service = next(edge for edge in changed.edges if edge.relation == "exposes")
+    service.facts["container_port"] = 9000
+    report = diff_topologies(topology, changed)
+
+    output = compose_changelog(report, changed, previous=topology, backend="template")
+
+    assert len(report.changes) == 2
+    assert "priority: `1` → `9`" in output.markdown
+    assert "container_port: `80` → `9000`" in output.markdown
+
+
 def test_markdown_includes_operator_note(topology):
     changed = change_fact(topology, "workload:docker:web", "image", "nginx:1.27")
     report = diff_topologies(topology, changed)

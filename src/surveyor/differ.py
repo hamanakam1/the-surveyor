@@ -182,6 +182,26 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
             )
         return _sorted(report)
 
+    # These plat-level fields participate in the structural fingerprint too.
+    for field_name, old_metadata, new_metadata in (
+        ("site", previous.site, current.site),
+        ("oet_version", previous.schema_version, current.schema_version),
+    ):
+        if old_metadata == new_metadata:
+            continue
+        report.changes.append(
+            Change(
+                action="modified",
+                entity_type="topology",
+                entity="plat",
+                severity=NOTICE,
+                label="Plat",
+                field=field_name,
+                before=old_metadata,
+                after=new_metadata,
+            )
+        )
+
     current_ids = set(current.nodes)
     previous_ids = set(previous.nodes)
 
@@ -394,7 +414,11 @@ def render_text(report: DiffReport, *, verbose: bool = False) -> str:
     for change in report.changes:
         if change.severity == INFO and not verbose:
             continue
-        layer_name = LAYER_LABELS.get(change.layer, "Unaligned")
+        layer_name = (
+            "Plat metadata"
+            if change.entity_type == "topology"
+            else LAYER_LABELS.get(change.layer, "Unaligned")
+        )
         if layer_name != current_layer:
             if current_layer and hidden_in_layer:
                 lines.append(f"  … {hidden_in_layer} more in {current_layer.lower()}")
