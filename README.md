@@ -103,9 +103,10 @@ regenerates the set. Nothing in it is hand-drawn.
  └─────────┘      └──────────────┘    └───────────┘     └────────────┘    └──────────────┘
 ```
 
-1. **Discover** — scanners observe one dimension each, concurrently, with a
-   hard time budget. A scanner that fails or times out is recorded and the
-   survey continues.
+1. **Discover** — scanners observe one dimension each, concurrently, with
+   timeouts on subprocess probes. Scanner-reported failures are recorded and
+   the survey continues; aggregate scanner deadline limitations are described
+   below.
 2. **Compile** — nodes merge by stable id, dangling edges are dropped with a
    note, and the document is stamped with a structural fingerprint.
 3. **Compare** — changes are classified `critical`, `warning`, `notice`, or
@@ -164,8 +165,12 @@ rather than a picture of part of one.
 | `workloads` | workload | containers (Docker, podman, nerdctl), the local model server and its models, listening TCP and UDP sockets |
 | `services` | workload | systemd units and launchd daemons |
 
-Each scanner is independently failable: if one times out or fails, the
-survey carries on without it and says so.
+Each scanner reports its own failures, allowing the survey to carry on with
+the observations that succeeded. The aggregate scanner deadline is currently
+a collection timeout, not a hard execution limit: an overdue scanner thread
+can delay or abort the survey. See the
+[concurrency limitations](docs/architecture.md#concurrency) before relying on
+a bounded survey duration.
 
 ### When a layer is empty
 

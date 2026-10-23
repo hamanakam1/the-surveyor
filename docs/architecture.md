@@ -74,7 +74,7 @@ corrupt a recorded plat.
 
 Three concentric promises:
 
-1. **A scanner never kills a survey.** Each scanner runs in its own thread and
+1. **Scanner-reported failures do not kill a survey.** Each scanner runs in its own thread and
    is wrapped by `ScannerSpec.run`; exceptions become a failed `ScanResult`
    with `ok: false`. The plat still gets everything the other scanners saw.
 2. **A probe never kills a scanner.** `probe.run` converts missing binaries,
@@ -141,9 +141,15 @@ check of the entire historical chain and all referenced objects.
 
 ## Concurrency
 
-- Scanners fan out through `ThreadPoolExecutor` at eight workers; the whole fan
-  out has a `scanner_timeout + 5s` deadline. Scanners that overrun are recorded
-  as timed out and the survey proceeds.
+- Scanners fan out through `ThreadPoolExecutor` at eight workers, with a
+  `scanner_timeout + 5s` collection deadline. **Known limitation:** a collection
+  timeout currently raises before partial timeout results are recorded, and
+  executor cleanup waits for running threads. An overdue scanner can therefore
+  delay or abort the survey. Per-probe subprocess timeouts do not bound the sum
+  of sequential probes in a scanner. Returning without waiting would allow
+  unfinished workers to accumulate across daemon cycles. A hard execution
+  deadline needs worker lifecycle control, or cooperative cancellation with
+  absolute deadlines and prevention of overlapping runs.
 - Commits take an exclusive `flock` on the ledger's `lock` file, so two
   processes cannot interleave a HEAD read and a journal append.
 - Notifications are sent after the journal entry is written, never before, so a
