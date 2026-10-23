@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import urllib.error
+from unittest.mock import Mock
+
 import pytest
 
 from conftest import build_topology, change_fact, change_telemetry, without_node
@@ -148,20 +151,26 @@ def test_telemetry_only_has_no_structural_section(topology):
     assert "Telemetry drift" in output.markdown
 
 
-def test_ollama_failure_falls_back_to_the_deterministic_draft(topology):
-    config = Config(scribe="ollama", ollama_endpoint="http://127.0.0.1:9", llm_timeout=0.3)
+def test_ollama_failure_falls_back_to_the_deterministic_draft(topology, monkeypatch):
+    transport = Mock(side_effect=urllib.error.URLError("synthetic connection failure"))
+    monkeypatch.setattr("surveyor.scribe.urllib.request.urlopen", transport)
+    config = Config(scribe="ollama", ollama_endpoint="http://model.example.test:11434", llm_timeout=0.3)
     changed = change_fact(topology, "workload:docker:web", "image", "nginx:1.27")
     report = diff_topologies(topology, changed)
     output = compose_changelog(report, changed, previous=topology, config=config)
     assert output.backend == "template"
     assert "local model unavailable" in output.warning
     assert "nginx:1.27" in output.markdown
+    transport.assert_called_once()
 
 
-def test_polish_raises_llm_error_when_the_endpoint_is_dead():
-    config = Config(scribe="ollama", ollama_endpoint="http://127.0.0.1:9", llm_timeout=0.2)
+def test_polish_raises_llm_error_when_the_endpoint_is_dead(monkeypatch):
+    transport = Mock(side_effect=urllib.error.URLError("synthetic connection failure"))
+    monkeypatch.setattr("surveyor.scribe.urllib.request.urlopen", transport)
+    config = Config(scribe="ollama", ollama_endpoint="http://model.example.test:11434", llm_timeout=0.2)
     topology = build_topology()
     changed = change_fact(topology, "workload:docker:web", "image", "api:2")
     report = diff_topologies(topology, changed)
-    with pytest.raises(LLMError):
+    with pytest.raises(LLMError, match="synthetic connection failure"):
         polish("draft", report, config)
+    transport.assert_called_once()

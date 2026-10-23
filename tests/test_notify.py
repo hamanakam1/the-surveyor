@@ -202,15 +202,18 @@ def test_delivery_posts_the_payload(webhook):
     assert server.requests[0]["payload"]["source"] == "the-surveyor"
 
 
-def test_delivery_failure_is_reported_not_raised():
-    notifier = Notifier(["http://127.0.0.1:9/nothing"], timeout=1.0, retries=0)
+def test_delivery_failure_is_reported_not_raised(monkeypatch):
+    transport = Mock(side_effect=urllib.error.URLError("synthetic connection failure"))
+    monkeypatch.setattr("surveyor.notify.urllib.request.urlopen", transport)
+    notifier = Notifier(["https://example.test/nothing"], timeout=1.0, retries=0)
     topology = build_topology()
     changed = change_fact(topology, "workload:docker:web", "image", "nginx:1.27")
     report = diff_topologies(topology, changed)
     results = notifier.send(report, changed)
     assert results[0].ok is False
-    assert results[0].error
+    assert results[0].error == "URLError"
     assert "nothing" not in results[0].endpoint
+    transport.assert_called_once()
 
 
 def test_server_errors_are_retried(webhook):
@@ -321,11 +324,16 @@ def test_notify_command_delivers(webhook, capsys):
     assert len(server.requests) == 1
 
 
-def test_notify_command_reports_failure(capsys):
+def test_notify_command_reports_failure(capsys, monkeypatch, tmp_path):
     from surveyor import cli
 
-    assert cli.main(["notify", "--notify", "http://127.0.0.1:9/hook"]) == 1
+    transport = Mock(side_effect=urllib.error.URLError("synthetic connection failure"))
+    monkeypatch.setattr("surveyor.notify.urllib.request.urlopen", transport)
+    monkeypatch.setattr("surveyor.notify.time.sleep", Mock())
+    monkeypatch.setattr("surveyor.cli.Config.load", Mock(return_value=Config(store=tmp_path / "ledger")))
+    assert cli.main(["notify", "--notify", "https://example.test/hook"]) == 1
     assert "failed" in capsys.readouterr().err
+    assert transport.call_count == 2
 
 
 def test_scan_notifies_on_a_structural_change(webhook, tmp_path, monkeypatch, capsys):
