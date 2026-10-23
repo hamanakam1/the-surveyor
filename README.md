@@ -318,6 +318,10 @@ masked everywhere they might be printed -- a webhook URL *is* a credential --
 and a failed delivery is reported, never raised: a dead webhook cannot stop a
 survey or a daemon.
 
+Failure reports include HTTP status codes or transport exception names, with
+URL credentials and exception text omitted. Payloads larger than 120,000 bytes
+are rejected before delivery; the notifier never sends a truncated JSON body.
+
 The gate is the same severity ladder the diff uses. `notice` would fire on the
 very first plat, `critical` only when a host or a power feed disappears, and
 `never` switches notifications off while leaving the rest of the tool alone.

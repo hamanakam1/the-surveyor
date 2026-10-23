@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import threading
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import Mock
 
 import pytest
 
@@ -67,6 +69,64 @@ def test_mask_url_hides_the_token():
     masked = mask_url("https://hooks.slack.com/services/T000/B000/SuperSecret")
     assert masked == "https://hooks.slack.com/***"
     assert "SuperSecret" not in masked
+
+
+def test_mask_url_hides_userinfo_query_and_fragment():
+    assert mask_url("https://user:password@example.test:8443/hook?token=secret#private") == (
+        "https://example.test:8443/***"
+    )
+    assert mask_url("http://user:password@[::1]:8080/secret") == "http://[::1]:8080/***"
+    assert mask_url("https://[broken/secret") == "***"
+
+
+def test_transport_errors_never_echo_webhook_credentials(monkeypatch):
+    endpoint = "https://user:password@example.test/hook/secret?token=private"
+    transport = Mock(side_effect=urllib.error.URLError(f"could not reach {endpoint}"))
+    monkeypatch.setattr("surveyor.notify.urllib.request.urlopen", transport)
+    result = Notifier([endpoint], retries=0, backoff=0).ping()[0]
+    assert not result.ok
+    assert result.error == "URLError"
+    assert result.endpoint == "https://example.test/***"
+    for secret in ("user", "password", "secret", "private"):
+        assert secret not in result.summary
+
+
+def test_malformed_endpoint_is_reported_without_stopping_other_deliveries(monkeypatch):
+    response = Mock(status=200)
+    response.__enter__ = Mock(return_value=response)
+    response.__exit__ = Mock(return_value=False)
+    transport = Mock(return_value=response)
+    monkeypatch.setattr("surveyor.notify.urllib.request.urlopen", transport)
+    endpoints = ["https://[broken/secret", "https://example.test/hook"]
+    results = Notifier(endpoints, retries=0, backoff=0).ping()
+    assert len(results) == 2
+    assert not results[0].ok
+    assert results[0].endpoint == "***"
+    assert "secret" not in results[0].summary
+    assert results[1].ok
+    assert transport.call_count == 1
+
+
+def test_oversized_payload_is_rejected_without_sending_partial_json(monkeypatch):
+    transport = Mock()
+    monkeypatch.setattr("surveyor.notify.urllib.request.urlopen", transport)
+    monkeypatch.setattr("surveyor.notify._MAX_PAYLOAD_BYTES", 32)
+    result = Notifier(["https://example.test/hook"], retries=0).ping()[0]
+    assert not result.ok
+    assert result.attempts == 0
+    assert "payload exceeds" in result.error
+    transport.assert_not_called()
+
+
+def test_retry_backoff_only_happens_between_attempts(monkeypatch):
+    transport = Mock(side_effect=TimeoutError("synthetic timeout"))
+    sleep = Mock()
+    monkeypatch.setattr("surveyor.notify.urllib.request.urlopen", transport)
+    monkeypatch.setattr("surveyor.notify.time.sleep", sleep)
+    result = Notifier(["https://example.test/hook"], retries=1, backoff=0.25).ping()[0]
+    assert not result.ok
+    assert result.attempts == 2
+    sleep.assert_called_once_with(0.25)
 
 
 def test_endpoint_styles_are_recognised():
