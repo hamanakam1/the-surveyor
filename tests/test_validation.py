@@ -93,6 +93,105 @@ def test_a_good_plat_has_no_problems(topology):
     assert validate_topology(topology) == []
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["oet_version", "site", "generated_at", "nodes", "edges", "fingerprint", "counts",
+     "generator", "observations"],
+)
+def test_explicit_null_top_level_fields_are_rejected(topology, field):
+    document = topology.to_dict()
+    document[field] = None
+    assert any(
+        problem.code == "bad-type" and problem.path == field
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("field", ["id", "kind", "layer", "label", "source"])
+@pytest.mark.parametrize("value", [None, [], {}, 7, False])
+def test_node_string_fields_require_strings(topology, field, value):
+    document = topology.to_dict()
+    document["nodes"][0][field] = value
+    assert any(
+        problem.code == "bad-type" and problem.path == f"nodes[0].{field}"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("field", ["source", "relation", "target"])
+@pytest.mark.parametrize("value", [None, [], {}, 7, False])
+def test_edge_string_fields_require_strings(topology, field, value):
+    document = topology.to_dict()
+    document["edges"][0][field] = value
+    assert any(
+        problem.code == "bad-type" and problem.path == f"edges[0].{field}"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("field", ["facts", "telemetry", "tags"])
+def test_explicit_null_node_containers_are_rejected(topology, field):
+    document = topology.to_dict()
+    document["nodes"][0][field] = None
+    assert any(
+        problem.code == "bad-type" and problem.path == f"nodes[0].{field}"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("tag", [{}, [], None, 1])
+def test_invalid_tag_values_report_problems_without_raising(topology, tag):
+    document = topology.to_dict()
+    document["nodes"][0]["tags"] = [tag]
+    assert any(
+        problem.code == "bad-type" and problem.path == "nodes[0].tags[0]"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize("field", ["nodes", "edges", "by_layer", "by_kind", "by_relation"])
+def test_explicit_null_count_fields_are_rejected(topology, field):
+    document = topology.to_dict()
+    document["counts"][field] = None
+    assert any(problem.path == f"counts.{field}" for problem in validate_document(document))
+
+
+@pytest.mark.parametrize("value", [None, [], "scanner", 7])
+def test_observations_must_be_an_object(topology, value):
+    document = topology.to_dict()
+    document["observations"] = value
+    assert any(
+        problem.code == "bad-type" and problem.path == "observations"
+        for problem in validate_document(document)
+    )
+
+
+@pytest.mark.parametrize(
+    ("generator", "path", "code"),
+    [(None, "generator", "bad-type"), ([], "generator", "bad-type"),
+     ({}, "generator.name", "missing-field"),
+     ({"name": None}, "generator.name", "bad-type"),
+     ({"name": "surveyor", "version": []}, "generator.version", "bad-type")],
+)
+def test_generator_metadata_has_the_declared_shape(topology, generator, path, code):
+    document = topology.to_dict()
+    document["generator"] = generator
+    assert any(
+        problem.code == code and problem.path == path
+        for problem in validate_document(document)
+    )
+
+
+def test_optional_fields_can_still_be_omitted(topology):
+    document = topology.to_dict()
+    for field in ("fingerprint", "counts", "generator", "observations"):
+        document.pop(field, None)
+    for node in document["nodes"]:
+        node.pop("tags", None)
+        node.pop("source", None)
+    assert validate_document(document) == []
+
+
 def test_a_redacted_plat_is_still_a_valid_plat(topology):
     """Redaction rewrites ids; the result must still obey the format."""
 

@@ -213,6 +213,52 @@ def test_validate_rejects_unknown_versions(tmp_path, capsys):
     assert "unsupported" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("document", [[], None, True, 7, "document"])
+@pytest.mark.parametrize("json_output", [False, True])
+def test_validate_reports_non_object_documents(tmp_path, capsys, document, json_output):
+    path = tmp_path / "non-object.json"
+    path.write_text(json.dumps(document))
+    extra = ["--json"] if json_output else []
+
+    assert cli.main(["validate", str(path), *extra]) == 1
+    captured = capsys.readouterr()
+    if json_output:
+        payload = json.loads(captured.out)
+        assert payload["ok"] is False
+        assert payload["problems"][0]["code"] == "bad-type"
+        assert payload["problems"][0]["path"] == ""
+    else:
+        assert "document must be an object" in captured.err
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("site", None), ("generated_at", None), ("nodes", None), ("edges", None),
+     ("nodes", [None]), ("edges", [None]), ("observations", "not an object")],
+)
+def test_validate_reports_invalid_shapes_before_model_construction(tmp_path, capsys, field, value):
+    document = build_topology().to_dict()
+    document[field] = value
+    path = tmp_path / "bad-shape.json"
+    path.write_text(json.dumps(document))
+
+    assert cli.main(["validate", str(path), "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert any(problem["code"] == "bad-type" for problem in payload["problems"])
+
+
+def test_validate_reports_nested_tag_shapes_without_raising(tmp_path, capsys):
+    document = build_topology().to_dict()
+    document["nodes"][0]["tags"] = [{}]
+    path = tmp_path / "bad-tags.json"
+    path.write_text(json.dumps(document))
+
+    assert cli.main(["validate", str(path), "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert {"code": "bad-type", "path": "nodes[0].tags[0]", "message": "expected a string"} in payload["problems"]
+
+
 def test_export_writes_a_plat_and_import_records_it(tmp_path, monkeypatch, capsys):
     source = tmp_path / "source"
     target = tmp_path / "target"
@@ -252,6 +298,44 @@ def test_import_refuses_a_broken_document(tmp_path, capsys):
     path.write_text(json.dumps({"oet_version": "1.0"}))
     assert cli.main(["--store", str(tmp_path / "ledger"), "import", str(path)]) == 1
     assert "missing-field" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("extra", [[], ["--force"]])
+def test_import_rejects_a_forged_fingerprint_before_creating_a_store(tmp_path, capsys, extra):
+    document = build_topology().to_dict()
+    document["fingerprint"] = "sha256:" + "0" * 64
+    path = tmp_path / "forged.json"
+    path.write_text(json.dumps(document))
+    store = tmp_path / "ledger"
+
+    assert cli.main(["--store", str(store), "import", str(path), *extra]) == 1
+    assert "fingerprint-mismatch" in capsys.readouterr().err
+    assert not store.exists()
+
+
+def test_import_accepts_a_document_without_an_optional_fingerprint(tmp_path, capsys):
+    document = build_topology().to_dict()
+    del document["fingerprint"]
+    path = tmp_path / "unsigned.json"
+    path.write_text(json.dumps(document))
+    store = tmp_path / "ledger"
+
+    assert cli.main(["--store", str(store), "import", str(path), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["recorded"] is True
+
+
+@pytest.mark.parametrize("field", ["site", "generated_at", "nodes", "edges"])
+def test_import_rejects_null_fields_without_creating_a_store(tmp_path, capsys, field):
+    document = build_topology().to_dict()
+    del document["fingerprint"]
+    document[field] = None
+    path = tmp_path / "null-field.json"
+    path.write_text(json.dumps(document))
+    store = tmp_path / "ledger"
+
+    assert cli.main(["--store", str(store), "import", str(path)]) == 1
+    assert "bad-type" in capsys.readouterr().err
+    assert not store.exists()
 
 
 def test_head_can_reach_back_through_the_local_surveys(tmp_path, capsys):

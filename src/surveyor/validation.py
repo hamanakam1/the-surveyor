@@ -123,7 +123,7 @@ def _check_version(value: Any, problems: list[Problem]) -> None:
             Problem(
                 "unknown-version",
                 "oet_version",
-                f"OET {value} is not a 1.x document; consumers must reject an unknown major",
+                f"unsupported OET {value}; consumers must reject an unknown major",
             )
         )
 
@@ -155,23 +155,29 @@ def _check_node(node: Any, index: int, problems: list[Problem]) -> None:
                     "node id must match ^[a-z0-9_.:/@+-]+$",
                 )
             )
-    elif identifier is not None:
+    elif "id" in node:
         problems.append(Problem("bad-type", f"{path}.id", "expected a string"))
 
     kind = node.get("kind")
-    if isinstance(kind, str) and kind not in KINDS:
+    if "kind" in node and not isinstance(kind, str):
+        problems.append(Problem("bad-type", f"{path}.kind", "expected a string"))
+    elif isinstance(kind, str) and kind not in KINDS:
         problems.append(
             Problem("unknown-kind", f"{path}.kind", f"unknown node kind {kind!r}")
         )
 
     layer = node.get("layer")
-    if isinstance(layer, str) and layer not in LAYERS:
+    if "layer" in node and not isinstance(layer, str):
+        problems.append(Problem("bad-type", f"{path}.layer", "expected a string"))
+    elif isinstance(layer, str) and layer not in LAYERS:
         problems.append(
             Problem("unknown-layer", f"{path}.layer", f"unknown layer {layer!r}")
         )
 
     label = node.get("label")
-    if isinstance(label, str) and not label:
+    if "label" in node and not isinstance(label, str):
+        problems.append(Problem("bad-type", f"{path}.label", "expected a string"))
+    elif isinstance(label, str) and not label:
         problems.append(Problem("empty", f"{path}.label", "label must not be empty"))
 
     for field in ("facts", "telemetry"):
@@ -179,7 +185,7 @@ def _check_node(node: Any, index: int, problems: list[Problem]) -> None:
             _check_attribute_map(node[field], f"{path}.{field}", problems)
 
     tags = node.get("tags")
-    if tags is not None:
+    if "tags" in node:
         if not isinstance(tags, list):
             problems.append(Problem("bad-type", f"{path}.tags", "expected an array"))
         else:
@@ -188,13 +194,14 @@ def _check_node(node: Any, index: int, problems: list[Problem]) -> None:
                     problems.append(
                         Problem("bad-type", f"{path}.tags[{position}]", "expected a string")
                     )
-            if len(set(tags)) != len(tags):
+            strings = [tag for tag in tags if isinstance(tag, str)]
+            if len(set(strings)) != len(strings):
                 problems.append(
                     Problem("duplicate", f"{path}.tags", "tags must be unique")
                 )
 
     source = node.get("source")
-    if source is not None and not isinstance(source, str):
+    if "source" in node and not isinstance(source, str):
         problems.append(Problem("bad-type", f"{path}.source", "expected a string"))
 
 
@@ -214,14 +221,16 @@ def _check_edge(edge: Any, index: int, problems: list[Problem]) -> None:
         )
 
     relation = edge.get("relation")
-    if isinstance(relation, str) and relation not in RELATIONS:
+    if "relation" in edge and not isinstance(relation, str):
+        problems.append(Problem("bad-type", f"{path}.relation", "expected a string"))
+    elif isinstance(relation, str) and relation not in RELATIONS:
         problems.append(
             Problem("unknown-relation", f"{path}.relation", f"unknown relation {relation!r}")
         )
 
     for field in ("source", "target"):
         value = edge.get(field)
-        if value is not None and not isinstance(value, str):
+        if field in edge and not isinstance(value, str):
             problems.append(Problem("bad-type", f"{path}.{field}", "expected a string"))
         elif isinstance(value, str) and not value:
             problems.append(Problem("empty", f"{path}.{field}", "edge endpoint must not be empty"))
@@ -231,8 +240,6 @@ def _check_edge(edge: Any, index: int, problems: list[Problem]) -> None:
 
 
 def _check_counts(counts: Any, problems: list[Problem]) -> None:
-    if counts is None:
-        return
     if not isinstance(counts, dict):
         problems.append(Problem("bad-type", "counts", "expected an object"))
         return
@@ -243,7 +250,7 @@ def _check_counts(counts: Any, problems: list[Problem]) -> None:
         )
     for field in ("nodes", "edges"):
         value = counts.get(field)
-        if value is None:
+        if field not in counts:
             continue
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             problems.append(
@@ -251,7 +258,7 @@ def _check_counts(counts: Any, problems: list[Problem]) -> None:
             )
     for field in ("by_layer", "by_kind", "by_relation"):
         value = counts.get(field)
-        if value is None:
+        if field not in counts:
             continue
         if not isinstance(value, dict):
             problems.append(Problem("bad-type", f"counts.{field}", "expected an object"))
@@ -267,7 +274,18 @@ def _check_counts(counts: Any, problems: list[Problem]) -> None:
                 )
 
 
-def validate_document(document: Mapping[str, Any]) -> list[Problem]:
+def _check_generator(generator: Any, problems: list[Problem]) -> None:
+    if not isinstance(generator, dict):
+        problems.append(Problem("bad-type", "generator", "expected an object"))
+        return
+    if "name" not in generator:
+        problems.append(Problem("missing-field", "generator.name", "required field is missing"))
+    for field in ("name", "version"):
+        if field in generator and not isinstance(generator[field], str):
+            problems.append(Problem("bad-type", f"generator.{field}", "expected a string"))
+
+
+def validate_document(document: object) -> list[Problem]:
     """Check a plat document against the OET rules.
 
     Returns every problem found, not just the first: an operator fixing a
@@ -286,14 +304,14 @@ def validate_document(document: Mapping[str, Any]) -> list[Problem]:
         _check_version(document["oet_version"], problems)
 
     site = document.get("site")
-    if site is not None:
+    if "site" in document:
         if not isinstance(site, str):
             problems.append(Problem("bad-type", "site", "expected a string"))
         elif not site:
             problems.append(Problem("empty", "site", "site must not be empty"))
 
     generated = document.get("generated_at")
-    if generated is not None:
+    if "generated_at" in document:
         if not isinstance(generated, str):
             problems.append(Problem("bad-type", "generated_at", "expected a string"))
         elif not TIMESTAMP_PATTERN.match(generated):
@@ -309,7 +327,7 @@ def validate_document(document: Mapping[str, Any]) -> list[Problem]:
                 )
 
     fingerprint = document.get("fingerprint")
-    if fingerprint is not None:
+    if "fingerprint" in document:
         if not isinstance(fingerprint, str):
             problems.append(Problem("bad-type", "fingerprint", "expected a string"))
         elif not FINGERPRINT_PATTERN.match(fingerprint):
@@ -321,11 +339,16 @@ def validate_document(document: Mapping[str, Any]) -> list[Problem]:
                 )
             )
 
-    _check_counts(document.get("counts"), problems)
+    if "counts" in document:
+        _check_counts(document["counts"], problems)
+    if "generator" in document:
+        _check_generator(document["generator"], problems)
+    if "observations" in document and not isinstance(document["observations"], dict):
+        problems.append(Problem("bad-type", "observations", "expected an object"))
 
     nodes = document.get("nodes")
     seen_ids: set[str] = set()
-    if nodes is not None:
+    if "nodes" in document:
         if not isinstance(nodes, list):
             problems.append(Problem("bad-type", "nodes", "expected an array"))
         else:
@@ -344,7 +367,7 @@ def validate_document(document: Mapping[str, Any]) -> list[Problem]:
 
     edges = document.get("edges")
     seen_edges: set[tuple[str, str, str]] = set()
-    if edges is not None:
+    if "edges" in document:
         if not isinstance(edges, list):
             problems.append(Problem("bad-type", "edges", "expected an array"))
         else:

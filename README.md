@@ -251,6 +251,11 @@ host took, and `HEAD~1` is the previous one, skipping whatever arrived from
 elsewhere in between. Re-importing the same plat changes nothing, exactly
 as re-surveying an unchanged machine changes nothing.
 
+Import checks the document's shape and any declared structural fingerprint
+before creating or updating the ledger. A mismatched fingerprint is rejected
+even with `--force`; omitting the optional fingerprint lets the importer compute
+it from the document.
+
 ### Compose a site
 
 `surveyor fleet` merges every host in the ledger — this one, plus every
