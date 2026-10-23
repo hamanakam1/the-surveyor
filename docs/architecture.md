@@ -139,6 +139,13 @@ a truncated journal or claiming success for an unreadable plat. These checks
 cover the tip and objects the commit relies on; `surveyor verify` remains the
 check of the entire historical chain and all referenced objects.
 
+Verification reports unreadable or non-UTF-8 journals and objects as failures,
+including in JSON mode. An invalid object address or malformed object structure
+also produces a diagnostic. Object addresses must be complete lowercase SHA-256
+digests, with an optional `sha256:` prefix; they cannot name arbitrary paths.
+When an object cannot be checked, verification continues through the remaining
+entries and persisted `HEAD`. It never repairs the offending data.
+
 ## Concurrency
 
 - Scanners fan out through `ThreadPoolExecutor` at eight workers, with a

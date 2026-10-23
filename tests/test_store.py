@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -146,6 +147,131 @@ def test_verify_detects_object_tampering(tmp_ledger, topology):
     report = tmp_ledger.verify()
     assert report.ok is False
     assert any("altered" in problem for problem in report.problems)
+
+
+@pytest.mark.parametrize("location", ["journal", "object"])
+def test_verify_reports_non_utf8_data_without_modifying_it(tmp_ledger, topology, location):
+    entry = tmp_ledger.commit(topology).entry
+    path = tmp_ledger.journal if location == "journal" else tmp_ledger._object_path(entry.digest)
+    path.write_bytes(b"\xff")
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any(location in problem for problem in report.problems)
+    assert path.read_bytes() == b"\xff"
+
+
+@pytest.mark.parametrize("location", ["journal", "object"])
+def test_verify_cli_returns_json_for_non_utf8_data(tmp_ledger, topology, location, capsys):
+    from surveyor.cli import main
+
+    entry = tmp_ledger.commit(topology).entry
+    path = tmp_ledger.journal if location == "journal" else tmp_ledger._object_path(entry.digest)
+    path.write_bytes(b"\xff")
+
+    assert main(["--store", str(tmp_ledger.root), "verify", "--json"]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["ok"] is False
+    assert any(location in problem for problem in report["problems"])
+    assert path.read_bytes() == b"\xff"
+
+
+def test_history_wraps_journal_read_errors(tmp_ledger, topology, monkeypatch):
+    import builtins
+
+    tmp_ledger.commit(topology)
+    original_open = builtins.open
+
+    def open_file(path, *args, **kwargs):
+        if path == tmp_ledger.journal:
+            raise PermissionError("synthetic permission failure")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", open_file)
+    with pytest.raises(StoreError, match=r"journal.*cannot be read"):
+        tmp_ledger.history()
+    assert tmp_ledger.verify().ok is False
+
+
+def test_get_preserves_full_bare_digest_support(tmp_ledger, topology):
+    entry = tmp_ledger.commit(topology).entry
+    assert tmp_ledger.get(entry.digest.removeprefix("sha256:")).to_dict() == topology.to_dict()
+
+
+def test_verify_reports_an_overflowing_journal_sequence(tmp_ledger, topology):
+    entry = tmp_ledger.commit(topology).entry.to_dict()
+    encoded = json.dumps(entry).replace('"seq": 0', '"seq": 1e999') + "\n"
+    tmp_ledger.journal.write_text(encoded)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("malformed" in problem for problem in report.problems)
+    assert tmp_ledger.journal.read_text() == encoded
+
+
+def test_verify_reports_unreadable_objects_and_continues(tmp_ledger, topology, monkeypatch):
+    entry = tmp_ledger.commit(topology).entry
+    blocked = tmp_ledger._object_path(entry.digest)
+    topology.site = "second-site"
+    tmp_ledger.commit(topology)
+    original_read = Path.read_text
+
+    def read_text(path, *args, **kwargs):
+        if path == blocked:
+            raise PermissionError("synthetic permission failure")
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert report.entries == 2
+    assert any("object" in problem and "read" in problem for problem in report.problems)
+    assert not any("parent" in problem for problem in report.problems)
+
+
+@pytest.mark.parametrize("digest", ["x", "sha256:../escape", "/absolute/path", "md5:" + "a" * 64])
+def test_verify_reports_malformed_object_digests(tmp_ledger, topology, digest):
+    entry = tmp_ledger.commit(topology).entry
+    entry.digest = digest
+    entry.sign()
+    encoded = json.dumps(entry.to_dict())
+    tmp_ledger.journal.write_text(encoded + "\n")
+    tmp_ledger.head_file.write_text(encoded)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("malformed digest" in problem for problem in report.problems)
+    with pytest.raises(StoreError, match="malformed digest"):
+        tmp_ledger.get(digest)
+    assert tmp_ledger.journal.read_text() == encoded + "\n"
+
+
+@pytest.mark.parametrize("nodes", [["bad-node"], {"id": "bad-node"}, [{"facts": [1]}]])
+def test_verify_reports_malformed_object_structure(tmp_ledger, topology, nodes):
+    from surveyor.util import canonical_json, digest_of
+
+    entry = tmp_ledger.commit(topology).entry
+    document = topology.to_dict()
+    document["nodes"] = nodes
+    entry.digest = digest_of(document)
+    entry.sign()
+    path = tmp_ledger._object_path(entry.digest)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = canonical_json(document)
+    path.write_text(payload)
+    encoded = json.dumps(entry.to_dict())
+    tmp_ledger.journal.write_text(encoded + "\n")
+    tmp_ledger.head_file.write_text(encoded)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("structure" in problem for problem in report.problems)
+    assert path.read_text() == payload
 
 
 def test_verify_detects_journal_edits(tmp_ledger, topology):
