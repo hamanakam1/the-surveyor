@@ -24,6 +24,7 @@ human -- can react to the kind of fault rather than parse prose.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -67,6 +68,32 @@ class Problem:
 
     def __str__(self) -> str:
         return f"{self.path}: {self.message}"
+
+
+def _check_finite_numbers(document: Mapping[str, Any], problems: list[Problem]) -> None:
+    """Reject non-JSON numbers, including inside open observation fields."""
+    pending: list[tuple[str, Any]] = [("", document)]
+    visited: set[int] = set()
+    while pending:
+        path, value = pending.pop()
+        if isinstance(value, float) and not math.isfinite(value):
+            problems.append(Problem("bad-value", path, "expected a finite JSON number"))
+        elif isinstance(value, (Mapping, list, tuple)):
+            # JSON input is a tree; direct Python callers may share containers
+            # or supply cycles. Never let that make this check loop forever.
+            if id(value) in visited:
+                continue
+            visited.add(id(value))
+            if isinstance(value, Mapping):
+                pending.extend(
+                    (f"{path}.{key}" if path else str(key), item)
+                    for key, item in reversed(list(value.items()))
+                )
+            else:
+                pending.extend(
+                    (f"{path}[{index}]", value[index])
+                    for index in range(len(value) - 1, -1, -1)
+                )
 
 
 def _is_scalar(value: Any) -> bool:
@@ -295,6 +322,8 @@ def validate_document(document: object) -> list[Problem]:
     problems: list[Problem] = []
     if not isinstance(document, Mapping):
         return [Problem("bad-type", "", "document must be an object")]
+
+    _check_finite_numbers(document, problems)
 
     for field in REQUIRED_FIELDS:
         if field not in document:

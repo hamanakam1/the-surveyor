@@ -255,6 +255,9 @@ Import checks the document's shape and any declared structural fingerprint
 before creating or updating the ledger. A mismatched fingerprint is rejected
 even with `--force`; omitting the optional fingerprint lets the importer compute
 it from the document.
+Non-finite numbers (`NaN`, `Infinity`, and numeric overflow) are rejected
+throughout the document, including observations and extension fields. Validation
+reports their paths, and import rejects them even with `--force`.
 
 ### Compose a site
 

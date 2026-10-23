@@ -313,6 +313,36 @@ def test_import_rejects_a_forged_fingerprint_before_creating_a_store(tmp_path, c
     assert not store.exists()
 
 
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity", "1e999"])
+@pytest.mark.parametrize("location", ["facts", "observations"])
+def test_nonfinite_json_is_rejected_before_import_creates_a_store(
+    tmp_path, capsys, token, location
+):
+    document = build_topology().to_dict()
+    document.pop("fingerprint")
+    if location == "facts":
+        document["nodes"][0]["facts"]["reading"] = "NONFINITE_NUMBER"
+        problem_path = "nodes[0].facts.reading"
+    else:
+        document["observations"]["results"] = [{"reading": "NONFINITE_NUMBER"}]
+        problem_path = "observations.results[0].reading"
+    raw = json.dumps(document).replace('"NONFINITE_NUMBER"', token)
+    path = tmp_path / "invalid-number.oet.json"
+    path.write_text(raw)
+    assert cli.main(["validate", str(path), "--json"]) == cli.EXIT_ERROR
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert any(
+        problem["code"] == "bad-value" and problem["path"] == problem_path
+        for problem in payload["problems"]
+    )
+    store = tmp_path / "ledger"
+    for extra in ([], ["--force"]):
+        assert cli.main(["--store", str(store), "import", str(path), *extra]) == cli.EXIT_ERROR
+        assert problem_path in capsys.readouterr().err
+        assert not store.exists()
+
+
 def test_import_accepts_a_document_without_an_optional_fingerprint(tmp_path, capsys):
     document = build_topology().to_dict()
     del document["fingerprint"]
