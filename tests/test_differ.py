@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
+import pytest
+
 from conftest import change_fact, change_telemetry, without_node
+from surveyor import cli
 from surveyor.differ import CRITICAL, INFO, NOTICE, WARNING, diff_topologies, render_text
 from surveyor.model import Edge, Node, Topology
 
@@ -114,3 +118,136 @@ def test_label_change_is_reported(topology):
     renamed.nodes["workload:docker:web"] = replace(node, label="web-renamed")
     report = diff_topologies(topology, renamed)
     assert [(change.field, change.after) for change in report.changes] == [("label", "web-renamed")]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "severity"),
+    [
+        ("kind", "service", WARNING),
+        ("layer", "network", WARNING),
+        ("tags", ("compose",), NOTICE),
+    ],
+)
+def test_node_shape_changes_are_structural(topology, field, value, severity):
+    changed = Topology.from_dict(topology.to_dict())
+    node_id = "workload:docker:web"
+    before = changed.nodes[node_id]
+    changed.nodes[node_id] = replace(before, **{field: value})
+
+    report = diff_topologies(topology, changed)
+
+    assert changed.fingerprint != topology.fingerprint
+    assert report.structural is True
+    assert len(report.changes) == 1
+    change = report.changes[0]
+    assert (change.entity_type, change.entity, change.field) == ("node", node_id, field)
+    assert change.action == "modified"
+    assert change.severity == severity
+    assert change.before == getattr(before, field)
+    assert change.after == value
+    assert change.layer == changed.nodes[node_id].layer
+
+
+def test_removed_node_tags_are_reported(topology):
+    changed = Topology.from_dict(topology.to_dict())
+    node_id = "device:192.168.53.1"
+    changed.nodes[node_id] = replace(changed.nodes[node_id], tags=())
+
+    report = diff_topologies(topology, changed)
+
+    assert report.structural is True
+    assert [(change.field, change.before, change.after) for change in report.changes] == [
+        ("tags", ("gateway", "unverified"), ()),
+    ]
+
+
+def test_node_tag_order_and_source_do_not_change_structure(topology):
+    changed = Topology.from_dict(topology.to_dict())
+    node_id = "device:192.168.53.1"
+    node = changed.nodes[node_id]
+    changed.nodes[node_id] = replace(node, tags=tuple(reversed(node.tags)), source="other")
+
+    assert changed.fingerprint == topology.fingerprint
+    assert diff_topologies(topology, changed).changes == []
+
+
+@pytest.mark.parametrize(("before", "after"), [(1, 2), (None, 2), (1, None)])
+def test_edge_fact_changes_are_structural(topology, before, after):
+    edge_id = "power:ac|powers|host:lab"
+    previous_edge = next(edge for edge in topology.edges if edge.id == edge_id)
+    previous_edge.facts = {"priority": before} if before is not None else {}
+    changed = Topology.from_dict(topology.to_dict())
+    current_edge = next(edge for edge in changed.edges if edge.id == edge_id)
+    current_edge.facts = {"priority": after} if after is not None else {}
+
+    report = diff_topologies(topology, changed)
+
+    assert changed.fingerprint != topology.fingerprint
+    assert report.structural is True
+    assert len(report.changes) == 1
+    change = report.changes[0]
+    assert (change.entity_type, change.entity, change.field) == ("edge", edge_id, "priority")
+    assert change.action == "modified"
+    assert change.severity == WARNING
+    assert change.before == before
+    assert change.after == after
+    assert change.layer == "power"
+    assert "priority" in change.summary
+    assert "priority" in render_text(report)
+
+
+def test_edge_fact_changes_show_values_in_text(topology):
+    changed = Topology.from_dict(topology.to_dict())
+    edge = next(edge for edge in changed.edges if edge.relation == "exposes")
+    edge.facts["container_port"] = 8080
+
+    report = diff_topologies(topology, changed)
+
+    assert report.structural is True
+    assert report.changes[0].severity == WARNING
+    assert "container_port 80 -> 8080" in report.changes[0].summary
+    assert "container_port 80 -> 8080" in render_text(report)
+
+
+@pytest.mark.parametrize(("before", "after"), [(1, 2), (None, 2), (1, None)])
+def test_volatile_edge_facts_are_informational(topology, before, after):
+    if before is not None:
+        topology.edges[0].facts["rx_bytes"] = before
+    changed = Topology.from_dict(topology.to_dict())
+    if after is None:
+        changed.edges[0].facts.pop("rx_bytes", None)
+    else:
+        changed.edges[0].facts["rx_bytes"] = after
+
+    report = diff_topologies(topology, changed)
+
+    assert changed.fingerprint == topology.fingerprint
+    assert report.structural is False
+    assert len(report.changes) == 1
+    change = report.changes[0]
+    assert (change.action, change.severity, change.field) == ("drifted", INFO, "rx_bytes")
+    assert change.before == before
+    assert change.after == after
+    assert change.label not in render_text(report)
+    assert f"drifted {change.label}" in render_text(report, verbose=True)
+
+
+@pytest.mark.parametrize("entity_type", ["node", "edge"])
+def test_diff_exit_code_for_previously_unreported_changes(topology, entity_type, tmp_path, capsys):
+    changed = Topology.from_dict(topology.to_dict())
+    if entity_type == "node":
+        changed.nodes["host:lab"].tags = ("primary",)
+    else:
+        changed.edges[0].facts["priority"] = 42
+    old_file = tmp_path / "previous.oet.json"
+    new_file = tmp_path / "current.oet.json"
+    old_file.write_text(json.dumps(topology.to_dict()))
+    new_file.write_text(json.dumps(changed.to_dict()))
+
+    exit_code = cli.main([
+        "--store", str(tmp_path / "ledger"), "diff", "--exit-code", "--format", "json",
+        "--from", str(old_file), "--to", str(new_file),
+    ])
+
+    assert exit_code == cli.EXIT_CHANGED
+    assert json.loads(capsys.readouterr().out)["structural"] is True

@@ -25,6 +25,7 @@ from .model import (
     REL_POWERS,
     REL_RUNS,
     RELATION_LABELS,
+    VOLATILE_FACT_KEYS,
     Topology,
 )
 from .util import clip
@@ -66,10 +67,10 @@ class Change:
 
     @property
     def summary(self) -> str:
-        if self.entity_type == "edge":
-            return f"{self.action} edge {self.label or self.entity}"
         if self.action == "modified":
             return f"{self.label or self.entity}: {self.field} {clip(self.before)} -> {clip(self.after)}"
+        if self.entity_type == "edge":
+            return f"{self.action} edge {self.label or self.entity}"
         return f"{self.action} {self.label or self.entity}"
 
     def to_dict(self) -> dict[str, Any]:
@@ -233,17 +234,23 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
                     layer=after.layer,
                 )
             )
-        if before.label != after.label:
+        for field_name, severity in (
+            ("kind", WARNING), ("layer", WARNING), ("label", NOTICE), ("tags", NOTICE),
+        ):
+            old = getattr(before, field_name)
+            new = getattr(after, field_name)
+            if old == new:
+                continue
             report.changes.append(
                 Change(
                     action="modified",
                     entity_type="node",
                     entity=node_id,
-                    severity=NOTICE,
+                    severity=severity,
                     label=after.label,
-                    field="label",
-                    before=before.label,
-                    after=after.label,
+                    field=field_name,
+                    before=old,
+                    after=new,
                     layer=after.layer,
                 )
             )
@@ -297,6 +304,29 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
                 layer=_edge_layer(current, edge),
             )
         )
+
+    for edge_id in sorted(set(current_edges) & set(previous_edges)):
+        before_edge = previous_edges[edge_id]
+        after_edge = current_edges[edge_id]
+        for field_name in sorted(set(before_edge.facts) | set(after_edge.facts)):
+            old = before_edge.facts.get(field_name)
+            new = after_edge.facts.get(field_name)
+            if old == new:
+                continue
+            volatile = field_name in VOLATILE_FACT_KEYS
+            report.changes.append(
+                Change(
+                    action="drifted" if volatile else "modified",
+                    entity_type="edge",
+                    entity=edge_id,
+                    severity=INFO if volatile else WARNING,
+                    label=_edge_label(current, after_edge),
+                    field=field_name,
+                    before=old,
+                    after=new,
+                    layer=_edge_layer(current, after_edge),
+                )
+            )
 
     return _sorted(report)
 
@@ -367,9 +397,7 @@ def render_text(report: DiffReport, *, verbose: bool = False) -> str:
             continue
         shown_in_layer += 1
         marker = SEVERITY_MARKERS.get(change.severity, "  ")
-        if change.entity_type == "edge":
-            lines.append(f"  {marker} {change.action} {change.label}")
-        elif change.action == "modified":
+        if change.action == "modified":
             lines.append(
                 f"  {marker} {change.label}: {change.field} "
                 f"{clip(change.before, 48)} -> {clip(change.after, 48)}"
