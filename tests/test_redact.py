@@ -11,6 +11,7 @@ from surveyor.redact import (
     is_public,
     mask_ip,
     mask_mac,
+    masked_summary,
     redact_topology,
 )
 
@@ -315,6 +316,32 @@ def test_observation_hostname_is_aliased(topology):
     redacted = redact_topology(topology, salt="k")
     assert redacted.observations["hostname"].startswith("sha256:")
     assert "lab" not in redacted.observations["hostname"]
+
+
+@pytest.mark.parametrize("include_power", [False, True])
+def test_observation_hostname_is_redacted_without_host_or_interface_nodes(include_power):
+    hostname = "synthetic-private-node"
+    survey = Topology(
+        site="x",
+        observations={
+            "hostname": hostname,
+            "warnings": [f"power scanner on {hostname} was unavailable"],
+            "details": {"message": f"partial survey for {hostname}"},
+        },
+    )
+    if include_power:
+        survey.add(Node("power:ac", "power_source", "AC feed", facts={"role": "mains"}))
+    original = json.dumps(survey.to_dict(), sort_keys=True)
+
+    redacted = redact_topology(survey, salt="k")
+    alias = Aliaser("k").alias(hostname)
+    assert redacted.observations["hostname"] == alias
+    assert redacted.observations["warnings"] == [f"power scanner on {alias} was unavailable"]
+    assert hostname not in json.dumps(redacted.to_dict())
+    assert set(redacted.nodes) == set(survey.nodes)
+    assert json.dumps(survey.to_dict(), sort_keys=True) == original
+    assert redact_topology(redacted, salt="k").to_dict() == redacted.to_dict()
+    assert masked_summary(survey, Aliaser("k")) == {"hostname": 1}
 
 
 def test_redacted_documents_are_self_consistent(topology):

@@ -304,6 +304,9 @@ def redact_topology(topology: Topology, *, salt: str = "") -> Topology:
 
     aliaser = Aliaser(salt)
     collector = Collector(aliaser=aliaser)
+    # Partial surveys still record this identifier even when the host and
+    # network scanners emitted no nodes from which to collect it.
+    collector.note("hostname", topology.observations.get("hostname"))
     for node in topology.nodes.values():
         collector.collect_node(node)
     for edge in topology.edges:
@@ -478,6 +481,7 @@ def masked_summary(topology: Topology, aliaser: Aliaser) -> dict[str, int]:
 
 def _collected(topology: Topology) -> dict[str, set[str]]:
     collector = Collector(aliaser=Aliaser())
+    collector.note("hostname", topology.observations.get("hostname"))
     for node in topology.nodes.values():
         collector.collect_node(node)
     return collector.values
