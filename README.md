@@ -143,6 +143,10 @@ Useful flags: `--redact` (publishable plats), `--no-save` (look, don't record),
 `--scanners host,network` (narrow the survey), `--json` (script it),
 `--store PATH` (put the ledger somewhere else).
 
+Digest references name stored objects. Multiple forced surveys or imports of the
+same object resolve to the newest matching entry's label. A short digest prefix
+is ambiguous only when it matches more than one distinct object.
+
 A modern edge box has hundreds of nodes, and most questions are about a
 part of it. `surveyor show` can cut the plat down:
 

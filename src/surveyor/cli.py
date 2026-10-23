@@ -303,16 +303,18 @@ def _parse_ref(ref: str, ledger: Ledger) -> tuple[Topology | None, str]:
     if imported is not None:
         return ledger.get(imported.digest), f"#{imported.seq}"
 
-    matches = [
-        entry
+    # Forced surveys and imports can reuse an object. A content reference
+    # names that object, with the newest matching journal entry as its label.
+    matches = {
+        entry.digest.split(":", 1)[-1]: entry
         for entry in entries
         if entry.digest.split(":", 1)[-1].startswith(ref.split(":", 1)[-1])
-    ]
+    }
     if not matches:
         raise StoreError(f"no recorded survey matches {ref!r}")
     if len(matches) > 1:
-        raise StoreError(f"{ref!r} is ambiguous ({len(matches)} surveys match); use more characters")
-    entry = matches[0]
+        raise StoreError(f"{ref!r} is ambiguous ({len(matches)} objects match); use more characters")
+    entry = next(iter(matches.values()))
     return ledger.get(entry.digest), f"#{entry.seq}"
 
 
