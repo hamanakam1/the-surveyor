@@ -262,6 +262,9 @@ it from the document.
 Non-finite numbers (`NaN`, `Infinity`, and numeric overflow) are rejected
 throughout the document, including observations and extension fields. Validation
 reports their paths, and import rejects them even with `--force`.
+Plat-file reads also report invalid UTF-8, malformed JSON, and I/O failures
+with the file path and error exit code; failed reads preserve existing output
+files and ledger contents.
 
 ### Compose a site
 

@@ -256,15 +256,24 @@ def _salt_for(config: Config, ledger: Ledger) -> str:
     return ledger.salt
 
 
+def _read_document(path: Path) -> Any:
+    """Read a plat file with consistent, path-specific CLI diagnostics."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except UnicodeError as exc:
+        raise SchemaError(f"{path}: not valid UTF-8 text") from exc
+    except OSError as exc:
+        raise SchemaError(f"{path}: cannot read OET document: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise SchemaError(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
+
+
 def _parse_ref(ref: str, ledger: Ledger) -> tuple[Topology | None, str]:
     """Resolve a user-supplied plat reference to a topology."""
 
     candidate = Path(ref).expanduser()
     if candidate.exists() and candidate.is_file():
-        try:
-            data = json.loads(candidate.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise SchemaError(f"{candidate}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
+        data = _read_document(candidate)
         return Topology.from_dict(data), candidate.name
 
     entries = ledger.history()
@@ -707,7 +716,7 @@ def _cmd_redact(args: argparse.Namespace) -> int:
         path = Path(args.path).expanduser()
         if not path.exists():
             raise
-        topology = Topology.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        topology = Topology.from_dict(_read_document(path))
         label = path.name
     if topology is None:
         raise StoreError(f"no survey available at {args.path}; run `surveyor scan` first")
@@ -846,10 +855,7 @@ def _cmd_import(args: argparse.Namespace) -> int:
     path = Path(args.path).expanduser()
     if not path.exists():
         raise SchemaError(f"{path} not found")
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SchemaError(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
+    data = _read_document(path)
 
     problems = validate_document(data)
     if not problems:
@@ -955,10 +961,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     path = Path(args.path).expanduser()
     if not path.exists():
         raise SchemaError(f"{path} not found")
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SchemaError(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
+    data = _read_document(path)
 
     problems = validate_document(data)
     counts: dict[str, Any] = {"nodes": 0, "edges": 0}
