@@ -118,10 +118,17 @@ An entry is:
 }
 ```
 
-`entry_digest` is the digest of the entry *without* it. Editing any field, or
-deleting an entry, breaks the chain and `surveyor verify` says so. `parent`
-being the previous `entry_digest` (not seq) means entries cannot be reordered
-either.
+`entry_digest` is the digest of the entry *without* it. Editing a field without
+recomputing its digest, or deleting an entry from the middle, breaks the chain
+and `surveyor verify` says so. `parent` being the previous `entry_digest` (not
+seq) means entries cannot be reordered either.
+
+Verification also reads the persisted `HEAD` file and compares its complete
+entry with the journal's newest entry. A truncated journal or a stale, missing,
+or malformed `HEAD` therefore fails verification. Entries without an
+`entry_digest` are rejected; reading never supplies a replacement digest or
+repairs the ledger. The hashes are unkeyed: someone who can rewrite the journal,
+objects and `HEAD` together can construct another internally consistent record.
 
 ## Concurrency
 

@@ -153,6 +153,8 @@ class LedgerEntry:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> LedgerEntry:
+        if not isinstance(data, Mapping):
+            raise StoreError("journal entry must be a JSON object")
         try:
             entry = cls(
                 seq=int(data["seq"]),
@@ -170,7 +172,7 @@ class LedgerEntry:
         except (KeyError, TypeError, ValueError) as exc:
             raise StoreError(f"journal entry is malformed: {exc}") from exc
         if not entry.entry_digest:
-            entry.sign()
+            raise StoreError("journal entry is missing entry_digest")
         return entry
 
 
@@ -546,7 +548,10 @@ class Ledger:
     def verify(self) -> VerifyReport:
         """Recompute the chain and every object digest."""
 
-        entries = self.history()
+        try:
+            entries = self.history()
+        except StoreError as exc:
+            return VerifyReport(ok=False, problems=[str(exc)])
         report = VerifyReport(ok=True, entries=len(entries))
         if not entries:
             report.problems.append("ledger is empty")
@@ -598,8 +603,15 @@ class Ledger:
             parent = entry.entry_digest
 
         report.objects = len(seen_digests)
-        tip = self.tip()
-        if tip is None or tip.entry_digest != entries[-1].entry_digest:
-            report.problems.append("HEAD does not point at the newest entry")
+        try:
+            persisted_head = LedgerEntry.from_dict(
+                json.loads(self.head_file.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError, StoreError) as exc:
+            report.problems.append(f"HEAD is missing, unreadable or malformed: {exc}")
             report.ok = False
+        else:
+            if persisted_head.to_dict() != entries[-1].to_dict():
+                report.problems.append("HEAD does not match the newest journal entry")
+                report.ok = False
         return report

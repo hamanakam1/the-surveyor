@@ -71,6 +71,96 @@ def test_verify_detects_journal_edits(tmp_ledger, topology):
     assert any("signature mismatch" in problem for problem in report.problems)
 
 
+def test_verify_detects_a_truncated_journal_against_persisted_head(tmp_ledger, topology):
+    tmp_ledger.commit(topology)
+    tmp_ledger.commit(topology, force=True)
+    lines = tmp_ledger.journal.read_text().splitlines()
+    tmp_ledger.journal.write_text(lines[0] + "\n")
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+
+
+def test_verify_detects_a_stale_persisted_head(tmp_ledger, topology):
+    first = tmp_ledger.commit(topology).entry
+    tmp_ledger.commit(topology, force=True)
+    tmp_ledger.head_file.write_text(json.dumps(first.to_dict()))
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+
+
+def test_verify_detects_a_missing_head(tmp_ledger, topology):
+    tmp_ledger.commit(topology)
+    tmp_ledger.head_file.unlink()
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+    assert not tmp_ledger.head_file.exists()
+
+
+@pytest.mark.parametrize("head", ["not JSON", "[]", "{}"])
+def test_verify_reports_a_malformed_head(tmp_ledger, topology, head):
+    tmp_ledger.commit(topology)
+    tmp_ledger.head_file.write_text(head)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+    assert tmp_ledger.head_file.read_text() == head
+
+
+def test_verify_checks_head_payload_not_only_its_digest(tmp_ledger, topology):
+    entry = tmp_ledger.commit(topology).entry.to_dict()
+    entry["note"] = "rewritten HEAD"
+    tmp_ledger.head_file.write_text(json.dumps(entry))
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+
+
+@pytest.mark.parametrize("missing_digest", [None, ""])
+def test_unsigned_journal_entries_are_rejected_without_repair(
+    tmp_ledger, topology, missing_digest
+):
+    entry = tmp_ledger.commit(topology).entry.to_dict()
+    entry["note"] = "rewritten history"
+    if missing_digest is None:
+        del entry["entry_digest"]
+    else:
+        entry["entry_digest"] = missing_digest
+    unsigned = json.dumps(entry) + "\n"
+    tmp_ledger.journal.write_text(unsigned)
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("entry_digest" in problem for problem in report.problems)
+    with pytest.raises(StoreError, match="entry_digest"):
+        tmp_ledger.history()
+    assert tmp_ledger.journal.read_text() == unsigned
+
+
+def test_verify_rejects_a_head_with_a_missing_digest(tmp_ledger, topology):
+    entry = tmp_ledger.commit(topology).entry.to_dict()
+    del entry["entry_digest"]
+    tmp_ledger.head_file.write_text(json.dumps(entry))
+
+    report = tmp_ledger.verify()
+
+    assert report.ok is False
+    assert any("HEAD" in problem for problem in report.problems)
+
+
 def test_verify_detects_a_journal_fingerprint_that_contradicts_the_object(tmp_ledger, topology):
     from surveyor.store import LedgerEntry
 
