@@ -109,6 +109,9 @@ class Config:
             raise ConfigError(
                 f"log_level must be one of {', '.join(LOG_LEVELS)}; got {self.log_level!r}"
             )
+        for name in ("interval", "max_workloads"):
+            if type(getattr(self, name)) is not int:
+                raise ConfigError(f"{name} must be an integer")
         if self.interval < 1:
             raise ConfigError("interval must be at least 1 second")
         for name, timeout in (
@@ -187,6 +190,8 @@ class Config:
                 except (TypeError, ValueError, OverflowError) as exc:
                     raise ConfigError(f"{key} must be a number") from exc
             elif key in {"max_workloads", "interval"}:
+                if isinstance(value, bool) or not isinstance(value, (int, str)):
+                    raise ConfigError(f"{key} must be an integer")
                 try:
                     values[key] = int(value)
                 except (TypeError, ValueError, OverflowError) as exc:

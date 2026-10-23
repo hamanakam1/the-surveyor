@@ -472,6 +472,11 @@ CLI flags. `surveyor init` writes the file; `surveyor --config ./x.toml scan`
 uses it. Generated TOML preserves Unicode site names and paths, including
 characters outside the Basic Multilingual Plane.
 
+`interval` and `max_workloads` require positive integers; booleans and fractional
+numbers are rejected. Environment and mapping inputs may use integer strings.
+Daemon `--interval` and `--max-cycles` also require positive integers and are
+checked before a ledger is opened or a survey starts.
+
 ### Run it forever
 
 ```bash

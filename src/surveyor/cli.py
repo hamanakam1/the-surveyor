@@ -676,7 +676,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
 def _cmd_daemon(args: argparse.Namespace) -> int:
     config = _config(args)
-    interval = args.interval or config.interval
+    interval = config.interval if args.interval is None else args.interval
     if not args.json_lines:
         print(f"◈ {format_daemon_start(config, interval=interval, once=args.once)}")
     stats = run_daemon(

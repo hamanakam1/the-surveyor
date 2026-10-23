@@ -24,7 +24,7 @@ from typing import Any, TextIO
 from .compiler import survey
 from .config import Config
 from .differ import diff_topologies
-from .errors import StoreError
+from .errors import ConfigError, StoreError
 from .notify import Notifier
 from .scribe import compose_changelog
 from .store import Ledger
@@ -110,6 +110,12 @@ def run_daemon(
 ) -> DaemonStats:
     """Run survey cycles until stopped, ``once``, or ``max_cycles``."""
 
+    cadence = config.interval if interval is None else interval
+    if type(cadence) is not int or cadence <= 0:
+        raise ConfigError("interval must be a positive integer number of seconds")
+    if max_cycles is not None and (type(max_cycles) is not int or max_cycles <= 0):
+        raise ConfigError("max_cycles must be a positive integer")
+
     ledger = Ledger(config.store)
     lock = InstanceLock(config.store / "daemon.lock")
     lock.acquire()
@@ -121,7 +127,6 @@ def run_daemon(
         on=config.notify_on,
     )
     stop_event = stop or threading.Event()
-    cadence = max(1, interval or config.interval)
     previous_handlers = _install_stop_handlers(stop_event)
 
     def log(payload: dict[str, object], human: str) -> None:
