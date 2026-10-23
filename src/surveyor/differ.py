@@ -28,7 +28,7 @@ from .model import (
     VOLATILE_FACT_KEYS,
     Topology,
 )
-from .util import clip
+from .util import canonical_json, clip
 
 CRITICAL = "critical"
 WARNING = "warning"
@@ -216,10 +216,17 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
     for node_id in sorted(current_ids & previous_ids):
         before = previous.nodes[node_id]
         after = current.nodes[node_id]
-        for field_name in sorted(set(before.structural_facts) | set(after.structural_facts)):
-            old = before.structural_facts.get(field_name)
-            new = after.structural_facts.get(field_name)
-            if old == new:
+        before_facts = before.structural_facts
+        after_facts = after.structural_facts
+        for field_name in sorted(set(before_facts) | set(after_facts)):
+            old = before_facts.get(field_name)
+            new = after_facts.get(field_name)
+            # Match fingerprint semantics: JSON true and 1 are different facts.
+            if (
+                field_name in before_facts
+                and field_name in after_facts
+                and canonical_json(old) == canonical_json(new)
+            ):
                 continue
             report.changes.append(
                 Change(
@@ -311,7 +318,11 @@ def diff_topologies(previous: Topology | None, current: Topology) -> DiffReport:
         for field_name in sorted(set(before_edge.facts) | set(after_edge.facts)):
             old = before_edge.facts.get(field_name)
             new = after_edge.facts.get(field_name)
-            if old == new:
+            if (
+                field_name in before_edge.facts
+                and field_name in after_edge.facts
+                and canonical_json(old) == canonical_json(new)
+            ):
                 continue
             volatile = field_name in VOLATILE_FACT_KEYS
             report.changes.append(

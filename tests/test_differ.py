@@ -251,3 +251,88 @@ def test_diff_exit_code_for_previously_unreported_changes(topology, entity_type,
 
     assert exit_code == cli.EXIT_CHANGED
     assert json.loads(capsys.readouterr().out)["structural"] is True
+
+
+@pytest.mark.parametrize("entity_type", ["node", "edge"])
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [(True, 1), (False, 0), (80, 80.0), ({"enabled": True}, {"enabled": 1}), ([False], [0])],
+)
+def test_json_fact_types_are_part_of_structure(topology, entity_type, before, after):
+    if entity_type == "node":
+        topology.nodes["host:lab"].facts["configuration"] = before
+    else:
+        topology.edges[0].facts["configuration"] = before
+    changed = Topology.from_dict(topology.to_dict())
+    if entity_type == "node":
+        changed.nodes["host:lab"].facts["configuration"] = after
+    else:
+        changed.edges[0].facts["configuration"] = after
+    # Exercise the values as they arrive from JSON, including nested types.
+    changed = Topology.from_dict(json.loads(json.dumps(changed.to_dict())))
+
+    report = diff_topologies(topology, changed)
+
+    assert changed.fingerprint != topology.fingerprint
+    assert report.structural is True
+    assert len(report.changes) == 1
+    change = report.changes[0]
+    assert (change.entity_type, change.field, change.severity) == (
+        entity_type, "configuration", WARNING,
+    )
+    assert json.dumps(change.before) == json.dumps(before)
+    assert json.dumps(change.after) == json.dumps(after)
+
+
+def test_volatile_edge_fact_type_changes_remain_informational(topology):
+    topology.edges[0].facts["rx_bytes"] = 1
+    changed = Topology.from_dict(topology.to_dict())
+    changed.edges[0].facts["rx_bytes"] = 1.0
+
+    report = diff_topologies(topology, changed)
+
+    assert changed.fingerprint == topology.fingerprint
+    assert report.structural is False
+    assert len(report.changes) == 1
+    change = report.changes[0]
+    assert (change.action, change.field, change.severity) == ("drifted", "rx_bytes", INFO)
+
+
+@pytest.mark.parametrize("entity_type", ["node", "edge"])
+def test_nested_fact_key_order_is_not_a_change(topology, entity_type):
+    before = {"configuration": {"enabled": True, "port": 80}}
+    after = {"configuration": {"port": 80, "enabled": True}}
+    if entity_type == "node":
+        topology.nodes["host:lab"].facts = before
+    else:
+        topology.edges[0].facts = before
+    changed = Topology.from_dict(topology.to_dict())
+    if entity_type == "node":
+        changed.nodes["host:lab"].facts = after
+    else:
+        changed.edges[0].facts = after
+
+    assert changed.fingerprint == topology.fingerprint
+    assert diff_topologies(topology, changed).changes == []
+
+
+@pytest.mark.parametrize("entity_type", ["node", "edge"])
+@pytest.mark.parametrize("removed", [False, True])
+def test_null_fact_presence_changes_are_structural(topology, entity_type, removed):
+    changed = Topology.from_dict(topology.to_dict())
+    with_null = topology if removed else changed
+    # Scanner code can mutate facts directly after model construction.
+    if entity_type == "node":
+        with_null.nodes["host:lab"].facts["configuration"] = None
+    else:
+        with_null.edges[0].facts["configuration"] = None
+
+    report = diff_topologies(topology, changed)
+
+    assert changed.fingerprint != topology.fingerprint
+    assert report.structural is True
+    assert len(report.changes) == 1
+    change = report.changes[0]
+    assert (change.entity_type, change.field, change.severity) == (
+        entity_type, "configuration", WARNING,
+    )
