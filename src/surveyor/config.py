@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import math
 import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields, replace
@@ -104,8 +105,13 @@ class Config:
             )
         if self.interval < 1:
             raise ConfigError("interval must be at least 1 second")
-        if self.scanner_timeout <= 0 or self.llm_timeout <= 0:
-            raise ConfigError("timeouts must be positive")
+        for name, timeout in (
+            ("scanner_timeout", self.scanner_timeout),
+            ("llm_timeout", self.llm_timeout),
+            ("notify_timeout", self.notify_timeout),
+        ):
+            if not math.isfinite(timeout) or timeout <= 0:
+                raise ConfigError(f"{name} must be finite and positive")
         if self.max_workloads < 1:
             raise ConfigError("max_workloads must be at least 1")
         if not self.site.strip():
@@ -118,8 +124,6 @@ class Config:
             raise ConfigError(
                 f"notify_format must be one of {', '.join(FORMATS)}; got {self.notify_format!r}"
             )
-        if self.notify_timeout <= 0:
-            raise ConfigError("notify_timeout must be positive")
         for endpoint in self.notify:
             if not endpoint.lower().startswith(("http://", "https://")):
                 raise ConfigError(
@@ -171,10 +175,16 @@ class Config:
                     values[key] = bool(boolish(value))
                 else:
                     raise ConfigError(f"{key} must be true or false")
-            elif key in {"scanner_timeout", "llm_timeout"}:
-                values[key] = float(value)
+            elif key in {"scanner_timeout", "llm_timeout", "notify_timeout"}:
+                try:
+                    values[key] = float(value)
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise ConfigError(f"{key} must be a number") from exc
             elif key in {"max_workloads", "interval"}:
-                values[key] = int(value)
+                try:
+                    values[key] = int(value)
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise ConfigError(f"{key} must be an integer") from exc
             elif key == "notify":
                 if isinstance(value, str):
                     values[key] = tuple(part.strip() for part in value.split(",") if part.strip())
@@ -184,8 +194,6 @@ class Config:
                     raise ConfigError("notify must be a list of webhook URLs")
             elif key == "notify_on" or key == "notify_format":  # noqa: PLR1714
                 values[key] = str(value).strip().lower()
-            elif key == "notify_timeout":
-                values[key] = float(value)
             elif key in {"site", "ollama_endpoint", "ollama_model", "scribe", "log_level"}:
                 values[key] = str(value).strip()
             else:  # pragma: no cover - guarded by CONFIG_KEYS

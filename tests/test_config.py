@@ -41,6 +41,67 @@ def test_interval_must_be_positive():
         Config(interval=0)
 
 
+@pytest.mark.parametrize("key", ["scanner_timeout", "llm_timeout", "notify_timeout"])
+@pytest.mark.parametrize("value", [0.0, -1.0, float("nan"), float("inf"), -float("inf")])
+def test_timeouts_must_be_finite_and_positive(key, value):
+    with pytest.raises(ConfigError, match=key):
+        Config(**{key: value})
+
+
+@pytest.mark.parametrize(
+    "key", ["scanner_timeout", "llm_timeout", "notify_timeout", "interval", "max_workloads"]
+)
+@pytest.mark.parametrize("value", ["not-a-number", None, [], {}])
+def test_malformed_numeric_mapping_values_raise_config_error(key, value):
+    with pytest.raises(ConfigError, match=key):
+        Config.from_mapping({key: value})
+
+
+@pytest.mark.parametrize("key", ["interval", "max_workloads"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_integer_mapping_values_raise_config_error(key, value):
+    with pytest.raises(ConfigError, match=key):
+        Config.from_mapping({key: value})
+
+
+@pytest.mark.parametrize("key", ["scanner_timeout", "llm_timeout", "notify_timeout"])
+def test_overflowing_timeout_mapping_values_raise_config_error(key):
+    with pytest.raises(ConfigError, match=key):
+        Config.from_mapping({key: 10**400})
+
+
+def test_numeric_mapping_values_keep_supported_conversions():
+    config = Config.from_mapping({
+        "scanner_timeout": "0.5",
+        "llm_timeout": 2,
+        "notify_timeout": "1e2",
+        "interval": "30",
+        "max_workloads": 10,
+    })
+    assert config.scanner_timeout == 0.5
+    assert config.llm_timeout == 2.0
+    assert config.notify_timeout == 100.0
+    assert config.interval == 30
+    assert config.max_workloads == 10
+
+
+@pytest.mark.parametrize("key", ["scanner_timeout", "llm_timeout", "notify_timeout"])
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_load_rejects_nonfinite_toml_timeouts(tmp_path, key, value):
+    path = tmp_path / "surveyor.toml"
+    path.write_text(f"{key} = {value}\n")
+    with pytest.raises(ConfigError, match=key):
+        Config.load(path)
+
+
+@pytest.mark.parametrize("key", ["scanner_timeout", "notify_timeout"])
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_environment_rejects_nonfinite_timeouts(monkeypatch, key, value):
+    monkeypatch.setenv(f"SURVEYOR_{key.upper()}", value)
+    with pytest.raises(ConfigError, match=key):
+        Config().with_env()
+
+
 def test_scanners_cannot_be_empty():
     with pytest.raises(ConfigError, match="at least one scanner"):
         Config(scanners=())
