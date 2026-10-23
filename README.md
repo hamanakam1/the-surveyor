@@ -469,7 +469,8 @@ ollama_model = "llama3.2:3b"
 
 Resolution order: defaults → config file → `SURVEYOR_*` environment variables →
 CLI flags. `surveyor init` writes the file; `surveyor --config ./x.toml scan`
-uses it.
+uses it. Generated TOML preserves Unicode site names and paths, including
+characters outside the Basic Multilingual Plane.
 
 ### Run it forever
 

@@ -119,6 +119,34 @@ def test_load_toml_round_trip(tmp_path):
     assert loaded.redact is True
 
 
+@pytest.mark.parametrize(
+    "site",
+    [
+        "edge\U0001f680",
+        "site-\U00020000",
+        'quotes " and literal \\u1234 and \\U0001f680',
+        "controls-" + "".join(chr(code) for code in range(32)) + "\x7f-end",
+    ],
+)
+def test_toml_strings_preserve_unicode_and_escapes(site):
+    config = Config(site=site)
+    assert tomllib.loads(config.to_toml()) == config.to_mapping()
+
+
+def test_toml_list_strings_preserve_unicode_and_escapes():
+    config = Config(notify=('https://example.invalid/\U0001f680/"\\\x7f',))
+    assert tomllib.loads(config.to_toml()) == config.to_mapping()
+
+
+def test_load_generated_toml_with_unicode_site_and_store(tmp_path):
+    original = Config(site="edge\U0001f680", store=tmp_path / "ledger-\U0001f680")
+    path = tmp_path / "surveyor.toml"
+    path.write_text(original.to_toml(), encoding="utf-8")
+    loaded = Config.load(path)
+    assert loaded.site == original.site
+    assert loaded.store == original.store
+
+
 def test_load_json(tmp_path):
     path = tmp_path / "surveyor.json"
     path.write_text('{"site": "json-site", "include_local_services": true}')

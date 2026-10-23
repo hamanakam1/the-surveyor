@@ -66,6 +66,12 @@ def default_config_path() -> Path:
     return surveyor_home() / "config.toml"
 
 
+def _toml_string(value: str) -> str:
+    # TOML accepts Unicode scalar characters, not JSON's surrogate-pair
+    # escapes. Unlike JSON, it also requires DEL to be escaped.
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
+
+
 @dataclass(slots=True)
 class Config:
     """Everything a survey needs to know before it starts looking."""
@@ -291,10 +297,10 @@ class Config:
             elif isinstance(value, (int, float)):
                 lines.append(f"{key} = {value}")
             elif isinstance(value, list):
-                rendered = ", ".join(json.dumps(str(item)) for item in value)
+                rendered = ", ".join(_toml_string(str(item)) for item in value)
                 lines.append(f"{key} = [{rendered}]")
             else:
-                lines.append(f"{key} = {json.dumps(str(value))}")
+                lines.append(f"{key} = {_toml_string(str(value))}")
         lines.append("")
         return "\n".join(lines)
 
