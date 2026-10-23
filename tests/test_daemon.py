@@ -11,6 +11,7 @@ cycles, which is a property of the machine and not of the daemon.
 
 from __future__ import annotations
 
+import signal
 import threading
 
 import pytest
@@ -93,6 +94,7 @@ def test_a_bad_cycle_does_not_kill_the_daemon(tmp_path, monkeypatch):
 
     import surveyor.daemon as daemon_module
 
+    _stubbed(monkeypatch, [_plat()])
     calls = {"n": 0}
     real_survey = daemon_module.survey
 
@@ -143,3 +145,31 @@ def test_json_lines_are_one_object_per_cycle(tmp_path, monkeypatch):
     assert len(stop.lines) == 2
     for line in stop.lines:
         assert json.loads(line)["cycle"] >= 1
+
+
+@pytest.mark.parametrize("fatal", [False, True])
+def test_stop_handlers_are_restored_on_every_exit(tmp_path, monkeypatch, fatal):
+    import surveyor.daemon as daemon_module
+    from surveyor.errors import StoreError
+
+    previous = {signal.SIGINT: signal.default_int_handler, signal.SIGTERM: signal.SIG_IGN}
+    installed = dict(previous)
+
+    def replace_handler(signum, handler):
+        old = installed[signum]
+        installed[signum] = handler
+        return old
+
+    monkeypatch.setattr(daemon_module.signal, "signal", replace_handler)
+    _stubbed(monkeypatch, [_plat()])
+    if fatal:
+        def fail(config, **kwargs):
+            raise StoreError("synthetic storage failure")
+
+        monkeypatch.setattr(daemon_module, "survey", fail)
+        with pytest.raises(StoreError):
+            run_daemon(Config(store=tmp_path / "ledger"), once=True)
+    else:
+        run_daemon(Config(store=tmp_path / "ledger"), once=True)
+
+    assert installed == previous
