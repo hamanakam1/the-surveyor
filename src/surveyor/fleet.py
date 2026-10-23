@@ -74,6 +74,7 @@ def compose(plats: Sequence[Topology], *, site: str = "") -> Composition:
                         f"{existing.source or 'a scanner'} and {other!r} by "
                         f"{node.source or 'a scanner'}"
                     )
+            merged.add(deepcopy(node))
         for edge in plat.edges:
             merged.connect(deepcopy(edge))
 

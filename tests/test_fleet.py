@@ -125,6 +125,59 @@ def test_merging_edge_facts_does_not_modify_an_input_plat():
     assert (first.digest, second.digest) == originals
 
 
+def test_composition_merges_complementary_node_facts_and_tags():
+    first = _host_plat("shed", "site-a", "f0:18:98:11:22:33", "192.168.7.1")
+    device_id = "device:f0-18-98-11-22-33"
+    first.nodes[device_id].tags = ("gateway",)
+    second = Topology.from_dict(first.to_dict())
+    second.nodes[device_id].facts["capabilities"] = {"protocols": ["ipv4", "ipv6"]}
+    second.nodes[device_id].tags = ("observed",)
+    originals = (first.digest, second.digest)
+
+    composition = compose([first, second])
+
+    device = composition.topology.nodes[device_id]
+    assert device.facts["capabilities"] == {"protocols": ["ipv4", "ipv6"]}
+    assert device.tags == ("gateway", "observed")
+    assert composition.conflicts == []
+    assert composition.hosts == ["host:shed"]
+    assert compose([second, first]).topology.fingerprint == composition.topology.fingerprint
+    device.facts["capabilities"]["protocols"].append("other")
+    assert (first.digest, second.digest) == originals
+
+
+def test_composition_keeps_first_conflicting_fact_and_merges_other_facts():
+    first = _host_plat("shed", "site-a", "f0:18:98:11:22:33", "192.168.7.1")
+    second = _host_plat("garage", "site-a", "f0:18:98:11:22:33", "10.0.0.1")
+    device_id = "device:f0-18-98-11-22-33"
+    second.nodes[device_id].facts["model"] = "router-v2"
+    originals = (first.digest, second.digest)
+
+    composition = compose([first, second])
+
+    device = composition.topology.nodes[device_id]
+    assert device.facts["model"] == "router-v2"
+    assert device.facts["address"] == "192.168.7.1"
+    assert len(composition.conflicts) == 1
+    assert "address" in composition.conflicts[0]
+    assert (first.digest, second.digest) == originals
+
+
+def test_later_conflicts_include_previously_merged_facts():
+    first = _host_plat("shed", "site-a", "f0:18:98:11:22:33", "192.168.7.1")
+    device_id = "device:f0-18-98-11-22-33"
+    second = Topology.from_dict(first.to_dict())
+    second.nodes[device_id].facts["model"] = "router-v1"
+    third = Topology.from_dict(first.to_dict())
+    third.nodes[device_id].facts["model"] = "router-v2"
+
+    composition = compose([first, second, third])
+
+    assert composition.topology.nodes[device_id].facts["model"] == "router-v1"
+    assert len(composition.conflicts) == 1
+    assert "model" in composition.conflicts[0]
+
+
 def test_the_summary_says_what_was_composed():
     shed = _host_plat("shed", "site-a", "f0:18:98:11:22:33", "192.168.7.1")
     composition = compose([shed], site="edge")
