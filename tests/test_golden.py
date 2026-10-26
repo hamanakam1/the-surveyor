@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -46,18 +47,9 @@ def test_there_are_golden_plats():
     _fixtures(),
     ids=[name for name, _, _ in _fixtures()],
 )
-def test_a_scanner_still_produces_the_same_map(name, fixture, golden):
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location(
-        "make_golden", ROOT / "scripts" / "make_golden.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-
-    result = module._scan(fixture["scanner"], fixture)
-    produced = module.shape(result)
+def test_a_scanner_still_produces_the_same_map(name, fixture, golden, golden_generator):
+    result = golden_generator._scan(fixture["scanner"], fixture)
+    produced = golden_generator.shape(result)
 
     assert produced["nodes"] == golden["nodes"], (
         f"{name}: the nodes changed. If that is intended, run `make golden` "
@@ -69,17 +61,8 @@ def test_a_scanner_still_produces_the_same_map(name, fixture, golden):
     )
 
 
-def test_the_goldens_are_not_empty():
-    for path in PLATS.glob("*.json"):
-        golden = json.loads(path.read_text(encoding="utf-8"))
-        assert golden["nodes"], f"{path.name} has no nodes"
-        # The host scanner emits no edges of its own, and that is correct.
-        assert "edges" in golden
-
-
-def test_the_goldens_match_the_generator():
-    """A golden that has drifted from its generator is a golden nobody trusts."""
-
+@pytest.fixture
+def golden_generator():
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -89,10 +72,47 @@ def test_the_goldens_match_the_generator():
     assert spec.loader is not None
     spec.loader.exec_module(module)
 
+    return module
+
+
+@pytest.mark.parametrize(
+    ("name", "fixture", "golden"),
+    _fixtures(),
+    ids=[name for name, _, _ in _fixtures()],
+)
+def test_golden_maps_do_not_depend_on_the_runner(
+    name, fixture, golden, golden_generator, monkeypatch,
+):
+    from surveyor import identity
+    from surveyor.scanners import host
+
+    monkeypatch.setattr(identity.socket, "gethostname", lambda: "unrelated-ci-runner")
+    monkeypatch.setattr(identity.os, "uname", lambda: SimpleNamespace(nodename="other-host"))
+    monkeypatch.setattr(host.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(host.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(host.os, "cpu_count", lambda: 2)
+    monkeypatch.setattr(host.os.path, "exists", lambda _path: True)
+
+    produced = golden_generator.shape(golden_generator._scan(fixture["scanner"], fixture))
+
+    assert produced == {"nodes": golden["nodes"], "edges": golden["edges"]}, name
+
+
+def test_the_goldens_are_not_empty():
+    for path in PLATS.glob("*.json"):
+        golden = json.loads(path.read_text(encoding="utf-8"))
+        assert golden["nodes"], f"{path.name} has no nodes"
+        # The host scanner emits no edges of its own, and that is correct.
+        assert "edges" in golden
+
+
+def test_the_goldens_match_the_generator(golden_generator):
+    """A golden that has drifted from its generator is a golden nobody trusts."""
+
     for path in sorted(COMMANDS.glob("*.json")):
         fixture = json.loads(path.read_text(encoding="utf-8"))
         golden = json.loads((PLATS / path.name).read_text(encoding="utf-8"))
-        result = module._scan(fixture["scanner"], fixture)
-        produced = module.shape(result)
+        result = golden_generator._scan(fixture["scanner"], fixture)
+        produced = golden_generator.shape(result)
         assert produced["nodes"] == golden["nodes"]
         assert produced["edges"] == golden["edges"]
