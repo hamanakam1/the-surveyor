@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from surveyor.config import Config
 from surveyor.scanners import (
@@ -74,17 +75,26 @@ def _scan(name: str, fixture: dict[str, Any]) -> ScanResult:
         "workloads": workloads,
     }[name]
     runner = _Runner(fixture["outputs"])
-    original = module.run
-    module.run = runner  # type: ignore[assignment]
-    try:
+    # The recorded plats use this synthetic host identity and fallback hardware.
+    # Replaying commands alone still lets the runner's hostname, architecture,
+    # CPU count, and container markers change the map. Keep those inputs scoped
+    # to the replay, including when a scanner raises.
+    with (
+        patch.object(module, "run", runner),
+        patch.object(module, "local_host_id", return_value="host:mac"),
+        patch.object(host, "local_hostname", return_value="Mac"),
+        patch.object(network, "hostname", return_value="Mac"),
+        patch.object(host.platform, "system", return_value=fixture.get("platform", "darwin").title()),
+        patch.object(host.platform, "machine", return_value="arm64"),
+        patch.object(host.os, "cpu_count", return_value=16),
+        patch.object(host, "_virtualisation", return_value=None),
+    ):
         context = ScanContext(
             config=Config(),
             site="golden",
             platform=fixture.get("platform", "darwin"),
         )
         return SCANNERS[name](context)
-    finally:
-        module.run = original  # type: ignore[assignment]
 
 
 def shape(result: ScanResult) -> dict[str, Any]:
