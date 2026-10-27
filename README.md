@@ -93,14 +93,29 @@ regenerates the set. Nothing in it is hand-drawn.
 
 ## The core loop
 
-```text
-  discover            compile             compare            narrate            record
- ┌─────────┐      ┌──────────────┐    ┌───────────┐     ┌────────────┐    ┌──────────────┐
- │ power   │      │ merge nodes  │    │ structural│     │ facts by   │    │ content-     │
- │ metal   │ ───▶ │ prune edges  │ ─▶ │ diff with │ ──▶ │ template,  │ ─▶ │ addressed    │
- │ network │      │ fingerprint  │    │ severity  │     │ prose by   │    │ objects +    │
- │ workloads│     │ observations │    │ classes   │     │ local LLM  │    │ hash chain   │
- └─────────┘      └──────────────┘    └───────────┘     └────────────┘    └──────────────┘
+```mermaid
+flowchart LR
+    subgraph D["1. Discover"]
+        SC["<b>Dimension Scanners</b><br/><i>power • metal<br/>network • workloads</i>"]
+    end
+
+    subgraph C["2. Compile"]
+        CP["<b>OET Compiler</b><br/><i>merge nodes<br/>prune edges<br/>fingerprint</i>"]
+    end
+
+    subgraph M["3. Compare"]
+        DF["<b>Structural Diff</b><br/><i>critical • warning<br/>notice • info</i>"]
+    end
+
+    subgraph N["4. Narrate"]
+        NR["<b>Scribe</b><br/><i>facts by template<br/>prose by local LLM</i>"]
+    end
+
+    subgraph R["5. Record"]
+        RC["<b>Content Ledger</b><br/><i>SHA-256 objects<br/>hash-chained journal</i>"]
+    end
+
+    SC --> CP --> DF --> NR --> RC
 ```
 
 1. **Discover** — scanners observe one dimension each, concurrently, with
