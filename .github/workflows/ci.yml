@@ -68,7 +68,7 @@ jobs:
         run: python -m pytest --junitxml=test-results.xml
       - name: Upload the test report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.os }}-py${{ matrix.python }}
           path: test-results.xml
