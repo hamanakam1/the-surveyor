@@ -6,6 +6,8 @@ All notable changes to The Surveyor. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-10
+
 ### Added
 
 - **`surveyor fleet --redact`.** A composed map covers several hosts, so it
@@ -314,7 +316,9 @@ All notable changes to The Surveyor. The format follows
 ### Added
 
 - **Outbound notifications** (`notify.py`): a structural change can now reach
-  Slack, Discord, Mattermost, ntfy, or any endpoint that accepts JSON.
+  Slack, Discord, Mattermost, ntfy, or any endpoint that accepts JSON. The
+  first plat is a baseline rather than a change, so a fresh ledger stays
+  silent until the operator lowers the gate to `notice`.
   - `--notify URL` (repeatable), `--notify-on critical|warning|notice|never`,
     and `--no-notify` to silence one run.
   - `notify`, `notify_on`, `notify_format`, `notify_timeout` in the config;

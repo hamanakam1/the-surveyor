@@ -1,6 +1,6 @@
 [project]
 name = "the-surveyor"
-version = "1.0.0"
+version = "1.1.0"
 description = "The Surveyor - a read-only, local-first systems analyst that surveys real hardware into an Open Edge Topology (OET) map, diffs the map, and narrates what changed."
 readme = "README.md"
 requires-python = ">=3.11"

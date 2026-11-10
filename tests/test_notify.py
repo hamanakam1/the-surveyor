@@ -411,3 +411,23 @@ def test_daemon_notifies_once_per_change(webhook, tmp_path, monkeypatch, capsys)
     capsys.readouterr()
     assert len(server.requests) == 1
     assert server.requests[0]["payload"]["source"] == "the-surveyor"
+
+
+def test_the_first_plat_is_a_baseline_not_an_alert(webhook, tmp_path, monkeypatch, capsys):
+    """A fresh ledger is silent at the default gate; `notice` announces it."""
+
+    from surveyor import cli
+
+    server, url = webhook
+    _stub_survey(monkeypatch, [build_topology()])
+
+    quiet = tmp_path / "quiet"
+    cli.main(["--store", str(quiet), "scan", "--notify", url])
+    capsys.readouterr()
+    assert server.requests == []
+
+    loud = tmp_path / "loud"
+    cli.main(["--store", str(loud), "scan", "--notify", url, "--notify-on", "notice"])
+    capsys.readouterr()
+    assert len(server.requests) == 1
+    assert server.requests[0]["payload"]["severity"] == "notice"

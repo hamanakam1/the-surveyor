@@ -1017,5 +1017,5 @@ each one.
 
 ---
 
-*Last reviewed: 2026-10-22, against v1.0.0. Amended in place as decisions
+*Last reviewed: 2026-11-10, against v1.1.0. Amended in place as decisions
 are made; see the changelog for what moved.*
