@@ -110,7 +110,13 @@ def severity_of(report: DiffReport) -> str:
 
 
 def should_notify(report: DiffReport, threshold: str) -> bool:
-    """Decide whether a report clears the configured threshold."""
+    """Decide whether a report clears the configured threshold.
+
+    A first survey is a baseline, not a change. Every node it records is
+    ``notice`` level, so a fresh ledger stays silent at the default
+    ``warning`` gate and only announces itself to an operator who has
+    lowered the gate to ``notice``.
+    """
 
     if threshold == "never":
         return False

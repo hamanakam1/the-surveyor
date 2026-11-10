@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for panther-intent-capture
+about: Suggest an idea for the-surveyor
 title: "[FEATURE] "
 labels: ["enhancement"]
 assignees: ""

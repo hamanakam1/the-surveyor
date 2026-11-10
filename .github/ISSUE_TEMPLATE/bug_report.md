@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help improve panther-intent-capture
+about: Create a report to help improve the-surveyor
 title: "[BUG] "
 labels: ["bug"]
 assignees: ""
@@ -29,7 +29,7 @@ A clear and concise description of what you expected to happen.
 
 - Browser: [e.g. Edge 132]
 - OS: [e.g. macOS 15]
-- panther-intent-capture version: [e.g. 1.0.0]
+- the-surveyor version: [e.g. 1.0.0]
 
 ## Additional context
 

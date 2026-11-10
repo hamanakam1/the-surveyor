@@ -93,14 +93,29 @@ regenerates the set. Nothing in it is hand-drawn.
 
 ## The core loop
 
-```text
-  discover            compile             compare            narrate            record
- ┌─────────┐      ┌──────────────┐    ┌───────────┐     ┌────────────┐    ┌──────────────┐
- │ power   │      │ merge nodes  │    │ structural│     │ facts by   │    │ content-     │
- │ metal   │ ───▶ │ prune edges  │ ─▶ │ diff with │ ──▶ │ template,  │ ─▶ │ addressed    │
- │ network │      │ fingerprint  │    │ severity  │     │ prose by   │    │ objects +    │
- │ workloads│     │ observations │    │ classes   │     │ local LLM  │    │ hash chain   │
- └─────────┘      └──────────────┘    └───────────┘     └────────────┘    └──────────────┘
+```mermaid
+flowchart LR
+    subgraph D["1. Discover"]
+        SC["<b>Dimension Scanners</b><br/><i>power • metal<br/>network • workloads</i>"]
+    end
+
+    subgraph C["2. Compile"]
+        CP["<b>OET Compiler</b><br/><i>merge nodes<br/>prune edges<br/>fingerprint</i>"]
+    end
+
+    subgraph M["3. Compare"]
+        DF["<b>Structural Diff</b><br/><i>critical • warning<br/>notice • info</i>"]
+    end
+
+    subgraph N["4. Narrate"]
+        NR["<b>Scribe</b><br/><i>facts by template<br/>prose by local LLM</i>"]
+    end
+
+    subgraph R["5. Record"]
+        RC["<b>Content Ledger</b><br/><i>SHA-256 objects<br/>hash-chained journal</i>"]
+    end
+
+    SC --> CP --> DF --> NR --> RC
 ```
 
 1. **Discover** — scanners observe one dimension each, concurrently, with
@@ -185,7 +200,7 @@ it. `surveyor doctor` answers all three without running a survey.
 
 ```bash
 surveyor doctor
-# ◈ the-surveyor 1.0.0 (OET 1.0)
+# ◈ the-surveyor 1.1.0 (OET 1.0)
 #   platform   darwin/arm64 · Python 3.14.6
 #   store      /Users/you/.surveyor/ledger (writable)
 #   config     none found; using the defaults
@@ -348,9 +363,13 @@ Failure reports include HTTP status codes or transport exception names, with
 URL credentials and exception text omitted. Payloads larger than 120,000 bytes
 are rejected before delivery; the notifier never sends a truncated JSON body.
 
-The gate is the same severity ladder the diff uses. `notice` would fire on the
-very first plat, `critical` only when a host or a power feed disappears, and
-`never` switches notifications off while leaving the rest of the tool alone.
+The gate is the same severity ladder the diff uses. `critical` only fires when
+a host or a power feed disappears, and `never` switches notifications off while
+leaving the rest of the tool alone.
+
+The first plat is a **baseline, not a change**: every node in it is `notice`
+level, so a fresh ledger stays silent at the default `warning` gate. Lower the
+gate to `notice` if you want to hear about the baseline being laid.
 
 ## Why it is built this way
 
@@ -529,7 +548,7 @@ src/surveyor/
 └── cli.py          commands, exit codes
 ```
 
-**Status:** 1.0.0 — macOS and Linux are supported and exercised in CI.
+**Status:** 1.1.0 — macOS and Linux are supported and exercised in CI.
 Windows is not a target: the scanners rely on `sysctl`, `/proc`, `sysfs`,
 `pmset`, and `lsof`.
 
