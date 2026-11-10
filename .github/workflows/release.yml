@@ -71,10 +71,46 @@ jobs:
         run: twine check dist/*
 
       - name: Publish to PyPI
+        id: publish
+        # Publishing needs a trusted publisher configured on PyPI for this
+        # repository. Until that exists, the step fails; the GitHub release
+        # must still be made, because that is where the notes and the
+        # artifacts live.
+        continue-on-error: true
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Say so when the package did not reach PyPI
+        if: steps.publish.outcome == 'failure'
+        run: |
+          echo "::warning::The package was not published to PyPI."
+          echo "Configure a trusted publisher for this repository:"
+          echo "  https://pypi.org/manage/account/publishing/"
+          echo "then re-run this workflow with the same tag."
+
+      - name: The release notes for this version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          tag = os.environ.get("RELEASE_TAG", "").strip()
+          version = tag[1:] if tag.startswith("v") else tag
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          section = re.search(
+              rf"^## \[{re.escape(version)}\].*?(?=^## \[|\Z)",
+              text,
+              re.MULTILINE | re.DOTALL,
+          )
+          body = section.group(0).strip() if section else ""
+          pathlib.Path("release-notes.md").write_text(body + "\n", encoding="utf-8")
+          print(body[:400])
+          PY
 
       - name: GitHub release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          body_path: CHANGELOG.md
+          body_path: release-notes.md
