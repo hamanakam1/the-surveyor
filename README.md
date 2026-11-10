@@ -532,6 +532,8 @@ has drifted away from the model.
 
 Layout, failure model, and ledger internals:
 [`docs/architecture.md`](docs/architecture.md).
+Releasing, including the one manual PyPI step:
+[`docs/releasing.md`](docs/releasing.md).
 
 ```
 src/surveyor/
