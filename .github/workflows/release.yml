@@ -33,13 +33,21 @@ jobs:
           python -m pip install build twine
 
       - name: The tag and the package agree
+        env:
+          # GITHUB_REF_NAME and INPUT_TAG are workflow contexts, not shell
+          # variables: reading them from the environment keeps the tag out of
+          # the generated source, so a tag can never be injected into it.
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           python - <<'PY'
+          import os
           import pathlib
           import re
           import sys
 
-          tag = "${GITHUB_REF_NAME}" if "${GITHUB_REF_NAME}" else "${INPUT_TAG}"
+          tag = os.environ.get("RELEASE_TAG", "").strip()
+          if not tag:
+              sys.exit("no tag to publish")
           version = re.search(
               r'^version\s*=\s*"([^"]+)"',
               pathlib.Path("pyproject.toml").read_text(),
