@@ -117,3 +117,7 @@ jobs:
         with:
           generate_release_notes: true
           body_path: release-notes.md
+          # The built distributions ride along with the release. PyPI may not
+          # be configured yet, and a release nobody can install is a
+          # release nobody uses.
+          files: dist/*
