@@ -7,7 +7,7 @@ run a small allowlist of introspection commands, and never mutate state.
 
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 OET_VERSION = "1.0"
 
 __all__ = ["OET_VERSION", "__version__"]
