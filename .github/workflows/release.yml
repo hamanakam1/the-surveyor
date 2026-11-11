@@ -48,14 +48,17 @@ jobs:
           tag = os.environ.get("RELEASE_TAG", "").strip()
           if not tag:
               sys.exit("no tag to publish")
+          # The version is declared once, in the package. Reading it from
+          # there keeps the tag, the CLI and the distribution metadata from
+          # drifting apart.
           version = re.search(
-              r'^version\s*=\s*"([^"]+)"',
-              pathlib.Path("pyproject.toml").read_text(),
+              r'^__version__\s*=\s*"([^"]+)"',
+              pathlib.Path("src/surveyor/__init__.py").read_text(),
               re.MULTILINE,
           ).group(1)
           expected = tag[1:] if tag.startswith("v") else tag
           if version != expected:
-              sys.exit(f"pyproject says {version}, the tag says {expected}")
+              sys.exit(f"the package says {version}, the tag says {expected}")
           print(f"publishing {version}")
           PY
 
